@@ -6,7 +6,6 @@ import {
   Home, BookOpen, FlaskConical, Gamepad2, Users, User
 } from 'lucide-react';
 
-// Theme map: activeTab → color palette (adaptive glow)
 const THEME = {
   home:     { c: 'cyan',    label: 'Home' },
   menu:     { c: 'amber',   label: 'Courses' },
@@ -65,7 +64,6 @@ export default function TopNav() {
     };
   }, [user, getSeconds, tickTimer]);
 
-  // Auto-close mobile drawer whenever the active tab changes
   useEffect(() => { setIsMobileMenuOpen(false); }, [activeTab]);
 
   const formatTime = (totalSeconds) => {
@@ -81,16 +79,14 @@ export default function TopNav() {
 
   return (
     <header className="w-full bg-slate-950/60 border-b border-white/5 backdrop-blur-2xl px-4 sm:px-6 py-3 font-mono flex flex-col sticky top-0 z-40 relative">
-      {/* Bottom edge glow — color-shifts with active page */}
       <div className={`absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent ${tc.glow} to-transparent opacity-60 pointer-events-none`} />
 
       <div className="flex items-center justify-between gap-3">
-        {/* Brand Logo */}
         <div
           className="flex items-center space-x-2.5 cursor-pointer shrink-0"
           onClick={() => { try { sounds?.playClick?.(); } catch {} setActiveTab('home'); }}
         >
-          <div className={`w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-200 shadow-lg`}>
+          <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-200 shadow-lg">
             <Sparkles className="w-5 h-5" />
           </div>
           <div className="flex flex-col leading-tight">
@@ -101,7 +97,6 @@ export default function TopNav() {
           </div>
         </div>
 
-        {/* Desktop Navigation Pills (unchanged) */}
         <nav className="hidden md:flex items-center space-x-1 bg-slate-900/40 backdrop-blur-xl border border-white/5 rounded-2xl p-1">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
@@ -125,18 +120,15 @@ export default function TopNav() {
           })}
         </nav>
 
-        {/* Right controls */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Work timer — hidden on smallest screens (also lives in Profile) */}
           <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-700 text-xs backdrop-blur-sm">
             <Clock className={`w-3.5 h-3.5 ${tc.text}`} />
             <span className="text-slate-200 font-bold">⏱️ {formatTime(sessionTime)}</span>
           </div>
 
-          {/* Profile button */}
           <button
             onClick={() => { try { sounds?.playClick?.(); } catch {} setActiveTab('profile'); }}
-            className={`flex items-center space-x-2 p-1 pr-2 rounded-xl bg-slate-900/60 border border-white/10 backdrop-blur-sm transition`}
+            className="flex items-center space-x-2 p-1 pr-2 rounded-xl bg-slate-900/60 border border-white/10 backdrop-blur-sm transition"
           >
             <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${userProfile?.avatarBg || 'from-cyan-500 to-blue-600'} flex items-center justify-center text-sm shadow-lg ring-1 ring-white/20`}>
               {userProfile?.avatar || '⚔️'}
@@ -154,7 +146,6 @@ export default function TopNav() {
             </div>
           </button>
 
-          {/* MOBILE HAMBURGER — the fix */}
           <button
             onClick={() => { try { sounds?.playClick?.(); } catch {} setIsMobileMenuOpen(!isMobileMenuOpen); }}
             className={`md:hidden p-2 rounded-xl border transition ${
@@ -169,7 +160,6 @@ export default function TopNav() {
         </div>
       </div>
 
-      {/* MOBILE DRAWER — frosted-glass slide-down with all pages */}
       {isMobileMenuOpen && (
         <div className="md:hidden absolute top-full left-0 right-0 bg-slate-950/95 backdrop-blur-2xl border-b border-white/10 shadow-2xl z-50">
           <nav className="flex flex-col p-3 gap-1.5">
@@ -189,7 +179,7 @@ export default function TopNav() {
                 >
                   <Icon className={`w-4 h-4 ${isActive ? itc.text : 'text-slate-400'}`} />
                   <span className="tracking-wide">{item.label}</span>
-                  {isActive && <span className={`ml-auto w-2 h-2 rounded-full ${itc.bg20} ${itc.text}`} />}
+                  {isActive && <span className={`ml-auto w-2 h-2 rounded-full bg-current`} />}
                 </button>
               );
             })}
