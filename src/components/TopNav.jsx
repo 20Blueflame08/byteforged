@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { sounds } from '../lib/soundEngine';
 import {
-  Clock, Crown, Menu, X,
+  Clock, Crown, Menu, X, Sparkles,
   Home, BookOpen, FlaskConical, Gamepad2, Users, User
 } from 'lucide-react';
 
