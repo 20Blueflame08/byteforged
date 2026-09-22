@@ -400,4 +400,430 @@ export default function Home() {
     const title = averagePct === 100 ? (EARNABLE_TITLES[activeTopicKey] || 'Master Technologist') : '';
     return { medal, title, totalPoints, averagePct };
   };
-  
+
+  const calculateGlobalProgress = () => {
+    if (!isQuizMode) return Math.round(((noteIndex + 1) / 30) * 100);
+    const answeredCount = answeredQuizSet.size;
+    const quizProg = Math.round((answeredCount / 15) * 100);
+    return Math.max(quizIndex < 7 ? 50 : 90, quizProg);
+  };
+  const globalProgress = calculateGlobalProgress();
+
+  useEffect(() => {
+    if (globalProgress === 100) {
+      const topicTitle = EARNABLE_TITLES[activeTopicKey] || 'Master Technologist';
+      if (earnedTitle !== topicTitle) {
+        setEarnedTitle(topicTitle); setEarnedMedal('Diamond');
+        try { sounds?.playUnlock?.(); } catch {}
+        confetti({ particleCount: 60, angle: 60, spread: 55, origin: { x: 0, y: 0.7 }, colors: ['#00f0ff', '#7000ff', '#ffffff'] });
+        confetti({ particleCount: 60, angle: 120, spread: 55, origin: { x: 1, y: 0.7 }, colors: ['#00f0ff', '#7000ff', '#ffffff'] });
+      }
+    }
+  }, [globalProgress, activeTopicKey, earnedTitle]);
+
+  useEffect(() => {
+    if (updateTopicProgress) updateTopicProgress(activeTopicKey, globalProgress, earnedMedal, earnedTitle);
+  }, [noteIndex, quizIndex, isQuizMode, answeredQuizSet.size, earnedMedal, earnedTitle, globalProgress]);
+
+  useEffect(() => {
+    const handleBlur = () => { if (isRecordingRef.current) stopRecording(); };
+    const handleVisibility = () => { if (document.hidden && isRecordingRef.current) stopRecording(); };
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  const uploadVoiceNote = async (blob) => {
+    if (!user?.id) return null;
+    try {
+      const fileName = `team_voice_${user.id}_${Date.now()}.webm`;
+      const { error } = await supabase.storage
+        .from('voice_notes').upload(fileName, blob, { contentType: 'audio/webm', upsert: false });
+      if (error) throw error;
+      const { data: urlData } = supabase.storage.from('voice_notes').getPublicUrl(fileName);
+      return urlData.publicUrl;
+    } catch (err) {
+      console.error('Voice upload failed:', err);
+      return URL.createObjectURL(blob);
+    }
+  };
+
+  const cleanupStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const stopRecording = () => {
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    } catch (e) {}
+    cleanupStream();
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+    setIsRecording(false);
+  };
+
+  const toggleRecording = async () => {
+    if (isRecordingRef.current) {
+      stopRecording();
+      return;
+    }
+
+    if (pendingRecording) return;
+
+    setMicError('');
+    setIsMicRequesting(true);
+
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      setMicError('Microphone not supported (requires HTTPS).');
+      setIsMicRequesting(false);
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      setMicError('Voice recording not supported in this browser.');
+      setIsMicRequesting(false);
+      return;
+    }
+
+    let stream = null;
+    try {
+      stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({ audio: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Mic request timed out')), 6000))
+      ]);
+      streamRef.current = stream;
+    } catch (err) {
+      console.error('getUserMedia error:', err);
+      setIsMicRequesting(false);
+      if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
+        setMicError('ðŸš« Microphone permission denied. Allow access in browser settings.');
+      } else if (err?.name === 'NotFoundError') {
+        setMicError('ðŸŽ™ï¸ No microphone detected.');
+      } else if (err?.name === 'NotReadableError') {
+        setMicError('ðŸ”’ Microphone is in use by another app.');
+      } else {
+        setMicError(`Mic error: ${err?.message || 'Could not access microphone.'}`);
+      }
+      return;
+    }
+
+    let mimeType = '';
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/mpeg'];
+    for (const c of candidates) {
+      try {
+        if (MediaRecorder.isTypeSupported(c)) { mimeType = c; break; }
+      } catch {}
+    }
+
+    let mediaRecorder;
+    try {
+      const options = mimeType ? { mimeType } : {};
+      mediaRecorder = new MediaRecorder(stream, options);
+    } catch (err) {
+      console.error('MediaRecorder constructor error:', err);
+      cleanupStream();
+      setIsMicRequesting(false);
+      setMicError(`Recorder init failed: ${err?.message || 'unsupported format'}`);
+      return;
+    }
+    mediaRecorderRef.current = mediaRecorder;
+
+    audioChunksRef.current = [];
+    recordingTimeRef.current = 0;
+    setRecordingTime(0);
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const duration = recordingTimeRef.current;
+      const blob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
+      cleanupStream();
+
+      if (blob.size > 0) {
+        setPendingRecording({
+          blob,
+          blobUrl: URL.createObjectURL(blob),
+          duration,
+          target: chatTab
+        });
+        try { sounds?.playClick?.(); } catch {}
+      } else {
+        setMicError('Recording came back empty â€” tap mic to try again.');
+      }
+      setIsRecording(false);
+    };
+
+    mediaRecorder.onerror = (err) => {
+      console.error('MediaRecorder error:', err);
+      cleanupStream();
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+      setIsRecording(false);
+      setMicError('Recording interrupted â€” tap mic to retry.');
+    };
+
+    try {
+      mediaRecorder.start(250);
+    } catch (err) {
+      console.error('MediaRecorder.start error:', err);
+      cleanupStream();
+      setIsMicRequesting(false);
+      setMicError(`Could not start recorder: ${err?.message || 'format error'}`);
+      return;
+    }
+
+    setIsRecording(true);
+    setIsMicRequesting(false);
+    try { sounds?.playUnlock?.(); } catch {}
+
+    timerRef.current = setInterval(() => {
+      recordingTimeRef.current += 1;
+      setRecordingTime(recordingTimeRef.current);
+    }, 1000);
+  };
+
+  const handleDiscardRecording = () => {
+    if (pendingRecording?.blobUrl) {
+      try { URL.revokeObjectURL(pendingRecording.blobUrl); } catch (e) {}
+    }
+    setPendingRecording(null);
+    recordingTimeRef.current = 0;
+    setRecordingTime(0);
+  };
+
+  const handleSendPendingRecording = async () => {
+    if (!pendingRecording) return;
+    const { blob, blobUrl, duration, target } = pendingRecording;
+    setPendingRecording(null);
+    userJustSentRef.current = true;
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (target === 'bot') {
+      setBotChatMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        sender: currentUsername,
+        avatar: currentUserAvatar,
+        text: 'ðŸŽ™ï¸ Voice Note',
+        audioUrl: blobUrl,
+        duration,
+        time: timeStr
+      }]);
+      await processAiSubmission(blob);
+    } else if (target === 'team' && myTeamId) {
+      const audioUrl = await uploadVoiceNote(blob);
+      try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+      if (audioUrl) {
+        await supabase.from('team_messages').insert({
+          team_id: myTeamId, channel: 'team',
+          sender_id: user.id, sender_username: currentUsername,
+          sender_avatar: currentUserAvatar, body: 'ðŸŽ™ï¸ Voice Note', audio_url: audioUrl
+        });
+      }
+    }
+  };
+
+  const processAiSubmission = async (userSubmissionInput) => {
+    setIsThinking(true);
+    let contextInfo = isQuizMode 
+      ? `Evaluating Quiz Card #${quizIndex + 1}: "${currentQuiz.question}". Canonical Answer: "${currentQuiz.answer}". Evaluate accuracy and assign a score from 0 to 10 points.`
+      : `Note Card #${noteIndex + 1}: "${currentNote.frontSummary || currentNote.front}"`;
+
+    const aiReply = await askAura1Bot(userSubmissionInput, contextInfo, botName);
+    
+    if (isQuizMode) {
+      let extractedScore = 8;
+      const matchScoreTen = aiReply.match(/(\d{1,2})\s*\/\s*10/);
+      if (matchScoreTen) extractedScore = Math.min(10, Math.max(0, parseInt(matchScoreTen[1], 10)));
+      else { const standaloneScore = aiReply.match(/\b([0-9]|10)\b/); if (standaloneScore) extractedScore = parseInt(standaloneScore[1], 10); }
+      const updatedScores = { ...quizScores, [quizIndex]: extractedScore };
+      setQuizScores(updatedScores);
+      setAnsweredQuizSet((prev) => new Set(prev).add(quizIndex));
+      setLockWarning('');
+      if (Object.keys(updatedScores).length === 15) {
+        const { medal, title, totalPoints, averagePct } = calculateRewardTier(updatedScores);
+        setEarnedMedal(medal); setEarnedTitle(title);
+        try { sounds?.playUnlock?.(); } catch {}
+        setLockWarning(`TOPIC COMPLETED! Score: ${totalPoints}/150 pts (${averagePct}%) | Badge: ${medal.toUpperCase()} ${title ? `| Title: ${title}` : ''}`);
+      }
+    }
+    setBotChatMessages(prev => [...prev, {
+      id: Date.now().toString(), sender: botName || 'Aura-1', avatar: 'ðŸ¤–',
+      text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: 'ai'
+    }]);
+    setIsThinking(false);
+  };
+
+  const handleSendMessage = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!inputText.trim() || isThinking) return;
+    try { sounds?.playClick?.(); } catch {}
+    const userText = inputText.trim();
+    setInputText('');
+    userJustSentRef.current = true;
+
+    if (chatTab === 'bot') {
+      setBotChatMessages(prev => [...prev, {
+        id: Date.now().toString(), sender: currentUsername, avatar: currentUserAvatar,
+        text: userText, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+      await processAiSubmission(userText);
+    } else if (myTeamId) {
+      await supabase.from('team_messages').insert({
+        team_id: myTeamId, channel: 'team',
+        sender_id: user.id, sender_username: currentUsername,
+        sender_avatar: currentUserAvatar, body: userText
+      });
+    }
+  };
+
+  const handleDeleteTeamMessage = async (msgId) => {
+    try {
+      const { error } = await supabase.from('team_messages').delete().eq('id', msgId);
+      if (error) throw error;
+      setTeamChatMessages(prev => prev.filter(m => m.id !== msgId));
+    } catch (err) { alert('Failed to delete: ' + err.message); }
+  };
+
+  const handleCardTap = () => {
+    if (isQuizMode && !answeredQuizSet.has(quizIndex)) {
+      try { sounds?.playClick?.(); } catch {}
+      setLockWarning("Flip Locked: Submit an answer to Aura-1 to unlock the canonical solution!");
+      return;
+    }
+    try { sounds?.playClick?.(); } catch {}
+    setIsFlipped(!isFlipped);
+  };
+
+  const handlePrev = () => {
+    try { sounds?.playClick?.(); } catch {}
+    setIsFlipped(false); setLockWarning('');
+    if (!isQuizMode) setNoteIndex((prev) => Math.max(0, prev - 1));
+    else {
+      if (quizIndex > 0 && quizIndex <= 6) setQuizIndex((prev) => prev - 1);
+      else if (quizIndex === 0) { if (isMidpointQuizComplete()) { setIsQuizMode(false); setNoteIndex(14); } else { setLockWarning("Previous Locked: Complete all 7 midpoint quiz cards before returning to Note 15!"); } }
+      else if (quizIndex > 7 && quizIndex <= 14) setQuizIndex((prev) => prev - 1);
+      else if (quizIndex === 7) { if (isFinalQuizComplete()) { setIsQuizMode(false); setNoteIndex(29); } else { setLockWarning("Previous Locked: Complete all 8 final quiz cards before returning to Note 30!"); } }
+    }
+  };
+
+  const handleNext = () => {
+    try { sounds?.playClick?.(); } catch {}
+    setIsFlipped(false); setLockWarning('');
+    if (!isQuizMode) {
+      if (noteIndex === 14 && !isMidpointQuizComplete()) { setIsQuizMode(true); setQuizIndex(0); return; }
+      if (noteIndex === 29) { setIsQuizMode(true); setQuizIndex(7); return; }
+      setNoteIndex((prev) => Math.min(29, prev + 1));
+    } else {
+      if (quizIndex < 6) setQuizIndex((prev) => prev + 1);
+      else if (quizIndex === 6) { if (isMidpointQuizComplete()) { setIsQuizMode(false); setNoteIndex(15); } else { setLockWarning("Checkpoint Gate Locked: Answer all 7 midpoint quiz cards to unlock Note 16!"); } }
+      else if (quizIndex < 14) setQuizIndex((prev) => prev + 1);
+      else if (quizIndex === 14) {
+        if (isFinalQuizComplete()) {
+          const { medal, title, totalPoints, averagePct } = calculateRewardTier(quizScores);
+          setEarnedMedal(medal); setEarnedTitle(title); updateTopicProgress(activeTopicKey, 100, medal, title);
+          try { sounds?.playUnlock?.(); } catch {}
+          setLockWarning(`TOPIC MASTERED! Score: ${totalPoints}/150 pts (${averagePct}%) | Badge: ${medal.toUpperCase()} ${title ? `| Title: ${title}` : ''}`);
+        } else { setLockWarning("Final Checkpoint Gate Locked: Answer all 8 final quiz cards to complete this topic!"); }
+      }
+    }
+  };
+
+  const handleResetTopic = () => {
+    try { sounds?.playClick?.(); } catch {}
+    setNoteIndex(0); setQuizIndex(0); setIsQuizMode(false); setIsFlipped(false);
+    setAnsweredQuizSet(new Set()); setQuizScores({}); setLockWarning('');
+    setEarnedMedal(null); setEarnedTitle('');
+    setBotChatMessages([{ id: 'sys-reset', sender: botName || 'Aura-1', avatar: '', text: `âœ¨ System reset complete. Hi, I'm ${botName || 'Aura-1'}! Ready to evaluate your progress with care (0â€“10 pts per card).`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: 'system' }]);
+    if (updateTopicProgress) updateTopicProgress(activeTopicKey, 0, null, '');
+  };
+
+  const handleClearChat = () => {
+    if (chatTab === 'bot') {
+      if (window.confirm('Are you sure you want to delete all workspace messages?')) {
+        setBotChatMessages([{ id: 'bot-clear-1', sender: botName || 'Aura-1', avatar: 'ðŸ¤–', text: 'Workspace chat cleared. How can I assist you with this step?', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: 'system' }]);
+      }
+    } else if (myTeamId) {
+      if (window.confirm('Delete YOUR team messages?')) {
+        supabase.from('team_messages').delete().eq('sender_id', user.id).eq('team_id', myTeamId).then(() => {
+          setTeamChatMessages(prev => prev.filter(m => m.senderId !== user.id));
+        });
+      }
+    }
+  };
+
+  const getMedalColor = (medal) => {
+    switch (medal) {
+      case 'Diamond': return 'text-cyan-300 border-cyan-400/50 bg-cyan-400/15 shadow-cyan-400/10 shadow-lg';
+      case 'Platinum': return 'text-purple-300 border-purple-400/50 bg-purple-400/15 shadow-purple-400/10 shadow-lg';
+      case 'Gold': return 'text-amber-300 border-amber-400/50 bg-amber-400/15 shadow-amber-400/10 shadow-lg';
+      case 'Silver': return 'text-slate-200 border-slate-400/50 bg-slate-400/15 shadow-slate-400/10 shadow-lg';
+      case 'Bronze': return 'text-orange-300 border-orange-400/50 bg-orange-400/15 shadow-orange-400/10 shadow-lg';
+      default: return 'text-cyan-400 border-cyan-500/50 bg-cyan-500/15 shadow-cyan-500/10 shadow-lg';
+    }
+  };
+
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  };
+
+  const micButtonDisabled = !!pendingRecording || isMicRequesting;
+  const micButtonTitle = isRecording
+    ? 'Stop Recording'
+    : pendingRecording
+    ? 'Send or cancel current note first'
+    : isMicRequesting
+    ? 'Requesting mic access...'
+    : 'Record Voice Note';
+
+  return (
+    <div className="w-full max-w-[1600px] mx-auto p-4 sm:p-6 font-sans space-y-6 min-h-screen relative">
+      
+      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[150px] animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-teal-400/8 rounded-full blur-[120px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-blue-500/5 rounded-full blur-[100px]" />
+      </div>
+
+      {/* ðŸ”§ FIX: Added z-30 to lift header layer above cards */}
+      <div className="bg-slate-900/40 border border-cyan-500/20 rounded-3xl p-5 flex flex-wrap items-center justify-between gap-5 shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl relative z-30">
+        <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+        <div className="flex items-center space-x-4">
+          <div className="p-3 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-teal-500/20 border border-cyan-400/30 text-cyan-300 shadow-lg shadow-cyan-500/20">
+            <Bot className="w-7 h-7" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2.5">
+              <h1 className="text-xl sm:text-2xl font-mono font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-teal-300 to-blue-300">{activeTopicKey.toUpperCase()} MASTERY</h1>
+              <button onClick={() => { setTempBotName(botName); setIsBotModalOpen(true); }} title="Rename Assistant Bot" className="text-slate-400 hover:text-cyan-300 transition p-1">
+                <Edit3 className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm font-mono text-cyan-100/60 font-medium">AI Engine: <span className="text-cyan-300 font-bold">{botName || 'Aura-1'}</span></p>
+          </div>
+        </div>
+
+        {(earnedMedal || earnedTitle) && (
+          <div className={`flex items-center space-x-2.5 px-4 py-2 rounded-xl border font-mono text-sm font-bold ${getMedalColor(earnedMedal || 'Diamond')} backdrop-blur-sm`}>
+            <Trophy className="w-5 h-5" />
+            <span className="font-extrabold text-base">{(earnedMedal || 'DIAMOND').toUpperCase()}</span>
+            {earnedTitle && (<><span className="text-slate-500">|</span><span className="text-white font-bold">ðŸ† {earnedTitle}</span></>)}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center space-x-3 gap-y-2">
+          <button onClick={handleResetTopic} title="Reset Topic Progress" className="flex items-center space-x-2 px-3.5 py-2.5 rounded-xl bg-slate-900/60 border border-slate-700 text-sm font-mono text-slate-300 hover:text-red-400 hover:border-red-500/50 transition font-bold shadow-md backdrop-blur-sm">
+            <RotateCcw className="w-4 h-4" /><span>Reset Topic</span>
+          </button>
+
+          
