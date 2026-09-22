@@ -970,4 +970,153 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              
+              {lockWarning && (
+                <div className="mt-4 p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 font-mono text-xs flex items-center space-x-2 animate-pulse">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-400" /><span>{lockWarning}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+              <button onClick={handlePrev} className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 text-slate-200 font-mono text-xs font-bold transition border border-slate-700 backdrop-blur-sm">
+                <ArrowLeft className="w-4 h-4" /><span>Previous</span>
+              </button>
+              <span className="text-xs font-mono text-slate-400 font-extrabold">{!isQuizMode ? `Note ${noteIndex + 1} of 30` : `Quiz ${quizIndex + 1} of 15`}</span>
+              <button onClick={handleNext} className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 font-mono text-xs font-extrabold transition shadow-lg shadow-cyan-500/20 hover:opacity-90">
+                <span>Next</span><ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:col-span-5 space-y-4">
+          <div className="bg-slate-900/40 border border-cyan-500/20 rounded-3xl p-5 flex flex-col h-[650px] shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl justify-between relative">
+            <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+            
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={() => setChatTab('bot')} 
+                  className={`px-3 py-1.5 rounded-lg font-mono text-xs font-extrabold transition flex items-center space-x-1.5 ${
+                    chatTab === 'bot' 
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-md shadow-cyan-500/20' 
+                      : 'bg-slate-900/60 text-slate-400 hover:text-white border border-slate-700 backdrop-blur-sm'
+                  }`}
+                >
+                  <Bot className="w-3.5 h-3.5" /><span>Aura-1 AI</span>
+                </button>
+                {isTeamMode && myTeamId && (
+                  <button 
+                    onClick={() => setChatTab('team')} 
+                    className={`px-3 py-1.5 rounded-lg font-mono text-xs font-extrabold transition flex items-center space-x-1.5 ${
+                      chatTab === 'team' 
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-md shadow-purple-500/20' 
+                        : 'bg-slate-900/60 text-slate-400 hover:text-white border border-slate-700 backdrop-blur-sm'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" /><span>Team Frequency</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <button onClick={handleClearChat} title={chatTab === 'bot' ? 'Clear workspace chat' : 'Clear my team messages'} className="p-1.5 rounded-lg bg-slate-900/60 text-slate-400 hover:text-red-400 border border-slate-700 transition backdrop-blur-sm">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-mono text-cyan-300 font-bold flex items-center space-x-1">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_rgba(34,211,238,0.8)]"></span><span>ONLINE</span>
+                </span>
+              </div>
+            </div>
+
+            <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto custom-scrollbar space-y-3.5 py-4 pr-1 font-mono text-xs relative">
+              {displayedMessages.length === 0 && chatTab === 'team' && (
+                <div className="text-center text-slate-500 text-xs py-8">
+                  No team messages yet. Start the conversation!
+                </div>
+              )}
+              {displayedMessages.map((msg, index) => {
+                const isUser = msg.sender === currentUsername;
+                const isSystem = msg.type === 'system' || msg.type === 'ai';
+                if (isSystem) return (
+                  <div key={msg.id || index} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-center text-slate-300 text-xs backdrop-blur-sm">
+                    <span>{msg.text}</span>
+                  </div>
+                );
+                return (
+                  <div key={msg.id || index} className={`flex flex-col space-y-1 ${isUser ? 'items-end' : 'items-start'}`}>
+                    <div className="flex items-center space-x-2 text-[10px] text-slate-400 px-1 font-extrabold">
+                      <span>{msg.avatar} {msg.sender}</span><span>â€¢</span><span>{msg.time}</span>
+                      {isUser && chatTab === 'bot' && (
+                        <button onClick={() => setBotChatMessages(prev => prev.filter((_, idx) => idx !== index))} className="text-slate-500 hover:text-red-400 ml-1" title="Delete message">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                      {isUser && chatTab === 'team' && msg.id && (
+                        <button onClick={() => handleDeleteTeamMessage(msg.id)} className="text-slate-500 hover:text-red-400 ml-1" title="Delete message">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <div className={`p-3.5 rounded-2xl max-w-[85%] leading-relaxed shadow-md backdrop-blur-sm ${isUser ? 'bg-cyan-500/20 text-cyan-100 border border-cyan-500/40 rounded-tr-sm' : 'bg-slate-800/60 text-slate-200 border border-slate-700 rounded-tl-sm'}`}>
+                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                      {msg.audioUrl && <AudioPlayer src={msg.audioUrl} initialDuration={msg.duration || 0} theme={chatTab === 'team' ? 'purple' : 'cyan'} />}
+                    </div>
+                  </div>
+                );
+              })}
+              {isThinking && chatTab === 'bot' && (
+                <div className="flex items-center space-x-2 text-slate-400 font-mono text-xs bg-slate-800/60 p-3 rounded-xl border border-slate-700 w-fit backdrop-blur-sm">
+                  <Sparkles className="w-4 h-4 text-cyan-400 animate-spin" /><span>{botName || 'Aura-1'} is analyzing your input...</span>
+                </div>
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            {hasNewMessages && !isNearBottom && (
+              <button
+                onClick={jumpToBottom}
+                className="absolute bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-2 shadow-lg shadow-cyan-500/40 z-10 transition animate-bounce"
+              >
+                <ArrowDown className="w-3.5 h-3.5" />
+                <span>New Messages</span>
+              </button>
+            )}
+
+            <div className="space-y-3 pt-3 border-t border-slate-800">
+              {isRecording && (
+                <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-3 backdrop-blur-sm">
+                  <div className="flex items-center justify-between text-xs font-mono text-red-300">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-3 h-3 rounded-full bg-red-500 animate-ping"></span>
+                      <span className="font-extrabold">â— REC {formatTime(recordingTime)}</span>
+                    </div>
+                    <span className="text-[10px] text-red-400 italic">Tap mic again to stop</span>
+                  </div>
+                </div>
+              )}
+
+              {micError && (
+                <div className="bg-rose-500/15 border border-rose-500/40 rounded-xl p-2.5 text-[11px] font-mono text-rose-300 flex items-center space-x-2 backdrop-blur-sm">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="flex-1">{micError}</span>
+                  <button onClick={() => setMicError('')} className="text-rose-400 hover:text-white"><X className="w-3 h-3" /></button>
+                </div>
+              )}
+
+              {pendingRecording && (
+                <div className="bg-cyan-500/10 border border-cyan-500/40 rounded-xl p-3 space-y-2 backdrop-blur-sm">
+                  <div className="flex justify-between items-center text-[10px] font-mono text-cyan-300 font-extrabold uppercase tracking-wider">
+                    <span>ðŸŽ™ï¸ Voice Note Ready â€” {pendingRecording.target === 'team' ? 'Team' : 'Aura-1 AI'}</span>
+                    <span className="px-2 py-0.5 bg-cyan-500/20 border border-cyan-500/40 rounded-full">{formatTime(pendingRecording.duration)}</span>
+                  </div>
+                  <AudioPlayer src={pendingRecording.blobUrl} initialDuration={pendingRecording.duration} theme={pendingRecording.target === 'team' ? 'purple' : 'cyan'} />
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={handleSendPendingRecording} className="flex-1 py-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition shadow-md shadow-cyan-500/20">
+                      <Send className="w-3 h-3" /> Send
+                    </button>
+                    <button onClick={handleDiscardRecording} className="px-4 py-2 bg-slate-800 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5">
+                      <X className="w-3 h-3" /> Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
