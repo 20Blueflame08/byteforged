@@ -970,16 +970,4 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              {lockWarning && (
-                <div className="mt-4 p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 font-mono text-xs flex items-center space-x-2 animate-pulse">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-400" /><span>{lockWarning}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between pt-4 border-t border-slate-800">
-              <button onClick={handlePrev} className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 text-slate-200 font-mono text-xs font-bold transition border border-slate-700 backdrop-blur-sm">
-                <ArrowLeft className="w-4 h-4" /><span>Previous</span>
-              </button>
-              <span className="text-xs font-mono text-slate-400 font-extrabold">{!isQuizMode ? `Note ${noteIndex + 1} of 30` : `Quiz ${quizIndex + 1} of 15`}</span>
-          
+              
