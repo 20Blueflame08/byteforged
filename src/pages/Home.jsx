@@ -1120,3 +1120,75 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
+                <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder={chatTab === 'bot' ? (isQuizMode ? `Type answer to evaluate Quiz #${quizIndex + 1}...` : `Ask ${botName || 'Aura-1'}...`) : 'Message your team...'} className="flex-1 bg-slate-950/60 border border-slate-700 rounded-xl px-4 py-3 font-mono text-xs text-white focus:outline-none focus:border-cyan-500/50 placeholder-slate-500 backdrop-blur-sm" />
+                <button
+                  type="button"
+                  onClick={toggleRecording}
+                  disabled={micButtonDisabled}
+                  title={micButtonTitle}
+                  className={`p-3 rounded-xl border transition flex-shrink-0 ${
+                    isRecording
+                      ? 'bg-red-600 border-red-500 text-white animate-pulse shadow-lg shadow-red-500/30'
+                      : micButtonDisabled
+                      ? 'bg-slate-800/50 border-slate-700 text-slate-500 cursor-not-allowed'
+                      : 'bg-slate-900/60 hover:bg-slate-800 text-cyan-400 border-slate-700 backdrop-blur-sm'
+                  }`}
+                >
+                  {isMicRequesting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isRecording ? (
+                    <Square className="w-4 h-4" />
+                  ) : (
+                    <Mic className="w-4 h-4" />
+                  )}
+                </button>
+                <button type="submit" disabled={(isThinking && chatTab === 'bot') || !inputText.trim() || isRecording} className="p-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 transition font-bold disabled:opacity-50 shadow-lg shadow-cyan-500/20 flex-shrink-0">
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {isBotModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900/80 border border-cyan-500/30 rounded-2xl p-6 max-w-md w-full space-y-4 font-mono shadow-2xl shadow-cyan-500/20 backdrop-blur-2xl">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-3">
+              <h3 className="text-base font-extrabold text-white flex items-center space-x-2"><Bot className="w-5 h-5 text-cyan-400" /><span>Rename Assistant Bot</span></h3>
+              <button onClick={() => setIsBotModalOpen(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400 font-extrabold uppercase">Bot Call Sign</label>
+              <input type="text" value={tempBotName} onChange={(e) => setTempBotName(e.target.value)} placeholder="e.g. Aura-1, Jarvis, CyberBot..." className="w-full bg-slate-950/60 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500/50" />
+            </div>
+            <div className="flex justify-end space-x-3 pt-2">
+              <button onClick={() => setIsBotModalOpen(false)} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700">Cancel</button>
+              <button onClick={() => { if (tempBotName.trim()) { setBotName(tempBotName.trim()); setIsBotModalOpen(false); try { sounds?.playUnlock?.(); } catch {} } }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 text-xs font-extrabold hover:from-cyan-400 hover:to-teal-300">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isTeamModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900/80 border border-purple-500/30 rounded-2xl p-6 max-w-md w-full space-y-4 font-mono shadow-2xl shadow-purple-500/20 backdrop-blur-2xl">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-3">
+              <h3 className="text-base font-extrabold text-white flex items-center space-x-2"><Users className="w-5 h-5 text-purple-400" /><span>Rename Team Profile</span></h3>
+              <button onClick={() => setIsTeamModalOpen(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400 font-extrabold uppercase">Team Name</label>
+              <input type="text" value={tempTeamName} onChange={(e) => setTempTeamName(e.target.value)} placeholder="e.g. Alpha Squad, ByteForged Elites..." className="w-full bg-slate-950/60 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-purple-500/50" />
+            </div>
+            <div className="flex justify-end space-x-3 pt-2">
+              <button onClick={() => setIsTeamModalOpen(false)} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700">Cancel</button>
+              <button onClick={() => { if (tempTeamName.trim()) { setTeamName(tempTeamName.trim()); setIsTeamModalOpen(false); try { sounds?.playUnlock?.(); } catch {} } }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 text-white text-xs font-extrabold hover:from-purple-500 hover:to-pink-400 shadow-lg shadow-purple-600/30">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+  }
