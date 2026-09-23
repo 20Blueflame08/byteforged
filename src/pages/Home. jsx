@@ -670,4 +670,9 @@ export default function Home() {
   };
   const micButtonDisabled = !!pendingRecording || isMicRequesting;
   const micButtonTitle = isRecording
-    ? 'Stop 
+    ? 'Stop Recording'
+    : pendingRecording
+    ? 'Send or cancel current note first'
+    : IsMicRequesting
+    ? 'Requesting mic access...'
+    : 'Record Voice Note'; 
