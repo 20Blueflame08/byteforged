@@ -419,3 +419,13 @@ export default function Home() {
     if (updateTopicProgress) updateTopicProgress(activeTopicKey, globalProgress, earnedMedal, earnedTitle);
   }, [noteIndex, quizIndex, isQuizMode, answeredQuizSet.size, earnedMedal, earnedTitle, globalProgress]);
   
+  useEffect(() => {
+    const handleBlur = () => { if (isRecordingRef.current) stopRecording(); };
+    const handleVisibility = () => { if (document.hidden && isRecordingRef.current) stopRecording(); };
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
