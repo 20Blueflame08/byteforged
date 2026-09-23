@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import TopNav from './components/TopNav';
 import Menu from './pages/Menu';
-import Home from './pages/Home':
+
 import Profile from './pages/Profile';
 import Auth from './pages/Auth';
 import PracticeLab from './pages/PracticeLab';
