@@ -817,4 +817,253 @@ export default function Home() {
                   <UserCheck className="w-4 h-4 text-cyan-400" /><span>Roster ({sortedRoster.length})</span><ChevronDown className="w-4 h-4 text-slate-400 ml-1" />
                 </button>
 
+                   {showTeamMembers && (
+                  <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-slate-900/90 border border-cyan-500/30 rounded-2xl p-4 shadow-2xl shadow-cyan-500/20 z-50 space-y-3 font-mono text-xs backdrop-blur-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-700 pb-2.5">
+                      <span className="text-xs text-slate-300 font-extrabold uppercase tracking-wider">Active Team Roster</span>
+                    </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                      {sortedRoster.map((m) => {
+                        const isMe = m.id === user?.id;
+                        return (
+                          <div key={m.id} className="flex flex-col space-y-2 bg-slate-800/60 p-3 rounded-xl border border-slate-700">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-lg border border-slate-700">{m.avatar || 'ðŸ‘¤'}</div>
+                                <span className="text-slate-100 font-extrabold text-sm flex items-center gap-1">
+                                  {m.username}
+                                  {m.isLeader && <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40">LEADER</span>}
+                                </span>
+                              </div>
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-extrabold border ${isMe ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'text-purple-300 border-slate-600'}`}>
+                                {isMe ? 'You' : m.role}
+                              </span>
+                            </div>
+                            {isMe && (
+                              <>
+                                <select value={m.role} onChange={(e) => handleSelectMyRole(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-cyan-400 uppercase tracking-wider">
+                                  {SELF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                                <button onClick={handleLeaveTeam} className="w-full py-1.5 bg-slate-700 hover:bg-rose-500/20 border border-slate-600 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded text-[10px] font-bold transition flex items-center justify-center gap-1">
+                                  <LogOut className="w-3 h-3" /> Leave Team
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <button onClick={() => { try { sounds?.playClick?.(); } catch {} setShowTeamMembers(false); if (setActiveTab) setActiveTab('friends'); }} className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-mono font-extrabold flex items-center justify-center space-x-2 transition shadow-lg">
+                      <UserPlus className="w-4 h-4" /><span>Invite Friends</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          <button onClick={() => { try { sounds?.playClick?.(); } catch {} setIsTeamMode(!isTeamMode); }} className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl border text-xs font-mono font-extrabold transition shadow-md backdrop-blur-sm ${isTeamMode ? 'bg-purple-500/20 border-purple-500/50 text-purple-300' : 'bg-slate-900/60 border-slate-700 text-slate-300 hover:text-white'}`}>
+            <Shield className="w-4 h-4" /><span>{isTeamMode ? 'TEAM MODE' : 'SOLO MODE'}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="lg:col-span-7 space-y-4">
+          <div className="bg-slate-900/40 border border-cyan-500/20 rounded-3xl p-6 relative overflow-hidden shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl flex flex-col justify-between min-h-[540px]">
+            <div className="space-y-3 border-b border-slate-800 pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <button className="p-2.5 rounded-xl bg-slate-900/60 text-slate-200 hover:text-white border border-slate-700 backdrop-blur-sm">
+                    <Menu className="w-4 h-4" />
+                  </button>
+                  <div className="font-mono">
+                    <span className="text-xs text-cyan-300/70 font-extrabold uppercase tracking-widest block">SYSTEM ARCHITECTURE</span>
+                    <span className="text-base font-extrabold text-white">{activeTopicKey.toUpperCase()} DECK</span>
+                  </div>
+                </div>
+                <button className="p-2.5 rounded-xl bg-slate-900/60 text-slate-200 hover:text-white border border-slate-700 backdrop-blur-sm">
+                  <Share2 className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-2 pt-1">
+                <div className="flex justify-between items-center font-mono">
+                  <span className="text-cyan-200/70 text-xs font-extrabold uppercase tracking-wider">UNIFIED MODULE PROGRESS</span>
+                  <span className="text-cyan-300 text-sm font-black">{globalProgress}%</span>
+                </div>
+                <div className="w-full h-3 bg-slate-800/60 rounded-full overflow-hidden p-0.5 border border-cyan-500/20">
+                  <div className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(34,211,238,0.5)]" style={{ width: `${globalProgress}%` }}></div>
+                </div>
+              </div>
+            </div>
+            <div className="py-6 flex-1 flex flex-col justify-center">
+              {!isQuizMode ? (
+                <div onClick={handleCardTap} className={`w-full min-h-[300px] bg-slate-900/50 border ${isFlipped ? 'border-cyan-500/50 shadow-[0_0_20px_rgba(34,211,238,0.25)]' : 'border-slate-700/60'} rounded-2xl p-6 sm:p-8 cursor-pointer transition-all duration-300 shadow-xl flex flex-col justify-between relative group backdrop-blur-sm`}>
+                  <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+                    <span className="bg-slate-950/80 px-3 py-1 rounded-full border border-cyan-500/30 font-extrabold text-cyan-300">NOTE #{noteIndex + 1} / 30</span>
+                    <span className="flex items-center space-x-1.5 text-slate-400 group-hover:text-cyan-300 transition"><RefreshCw className="w-3.5 h-3.5" /><span>Tap to {isFlipped ? 'Show Front' : 'Flip for Breakdown'}</span></span>
+                  </div>
+                  <div className="my-6">
+                    <h2 className="text-lg sm:text-xl font-mono font-bold leading-relaxed text-white">{isFlipped ? (currentNote.back || currentNote.backBreakdown) : (currentNote.frontSummary || currentNote.front)}</h2>
+                  </div>
+                  {currentNote.coolFact && isFlipped && (
+                    <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3.5 text-xs font-mono text-amber-300 flex items-start space-x-2.5 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+                      <Lightbulb className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-400" />
+                      <span>{currentNote.coolFact}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-700/50 text-xs font-mono text-slate-500">
+                    <span>Topic ID: {activeTopicKey}</span><span className="text-cyan-400 font-bold">Status: Synchronized</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full min-h-[300px] bg-slate-900/50 border border-purple-500/40 rounded-2xl p-6 sm:p-8 shadow-xl flex flex-col justify-between relative backdrop-blur-sm">
+                  <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+                    <span className="bg-purple-500/20 text-purple-300 border border-purple-500/40 px-3 py-1 rounded-full font-extrabold">QUIZ #{quizIndex + 1} / 15 {quizIndex < 7 ? '(Midpoint)' : '(Final)'}</span>
+                    <span className="text-purple-400 font-bold">Score: {quizScores[quizIndex] !== undefined ? `${quizScores[quizIndex]}/10 pts` : 'Unanswered'}</span>
+                  </div>
+                  <div className="my-6 space-y-4">
+                    <h2 className="text-lg sm:text-xl font-mono font-bold leading-relaxed text-white">{currentQuiz.question}</h2>
+                    {answeredQuizSet.has(quizIndex) ? (
+                      <div className="bg-emerald-500/15 border border-emerald-500/50 rounded-xl p-4 text-sm font-mono text-emerald-300 space-y-2 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                        <span className="font-extrabold block text-emerald-400 text-xs uppercase tracking-wider">Canonical Answer Key:</span>
+                        <p className="font-bold leading-relaxed">{currentQuiz.answer}</p>
+                      </div>
+                    ) : (
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 text-xs font-mono text-amber-300 flex items-center space-x-2">
+                        <Lock className="w-4 h-4 flex-shrink-0 text-amber-400" /><span>Submit your answer via Voice or Text chat to evaluate and unlock!</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-700/50 text-xs font-mono text-slate-500">
+                    <span>Evaluation Weight: 10 Pts</span><span className="text-purple-400 font-bold">{answeredQuizSet.has(quizIndex) ? 'Evaluated' : 'Pending Submission'}</span>
+                  </div>
+                </div>
+              )}
+              {lockWarning && (
+                <div className="mt-4 p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 font-mono text-xs flex items-center space-x-2 animate-pulse">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-400" /><span>{lockWarning}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+              <button onClick={handlePrev} className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 text-slate-200 font-mono text-xs font-bold transition border border-slate-700 backdrop-blur-sm">
+                <ArrowLeft className="w-4 h-4" /><span>Previous</span>
+              </button>
+              <span className="text-xs font-mono text-slate-400 font-extrabold">{!isQuizMode ? `Note ${noteIndex + 1} of 30` : `Quiz ${quizIndex + 1} of 15`}</span>
+              <button onClick={handleNext} className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 font-mono text-xs font-extrabold transition shadow-lg shadow-cyan-500/20 hover:opacity-90">
+                <span>Next</span><ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:col-span-5 space-y-4">
+          <div className="bg-slate-900/40 border border-cyan-500/20 rounded-3xl p-5 flex flex-col h-[650px] shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl justify-between relative">
+            <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={() => setChatTab('bot')} 
+                  className={`px-3 py-1.5 rounded-lg font-mono text-xs font-extrabold transition flex items-center space-x-1.5 ${
+                    chatTab === 'bot' 
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-md shadow-cyan-500/20' 
+                      : 'bg-slate-900/60 text-slate-400 hover:text-white border border-slate-700 backdrop-blur-sm'
+                  }`}
+                >
+                  <Bot className="w-3.5 h-3.5" /><span>Aura-1 AI</span>
+                </button>
+                {isTeamMode && myTeamId && (
+                  <button 
+                    onClick={() => setChatTab('team')} 
+                    className={`px-3 py-1.5 rounded-lg font-mono text-xs font-extrabold transition flex items-center space-x-1.5 ${
+                      chatTab === 'team' 
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-md shadow-purple-500/20' 
+                        : 'bg-slate-900/60 text-slate-400 hover:text-white border border-slate-700 backdrop-blur-sm'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" /><span>Team Frequency</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <button onClick={handleClearChat} title={chatTab === 'bot' ? 'Clear workspace chat' : 'Clear my team messages'} className="p-1.5 rounded-lg bg-slate-900/60 text-slate-400 hover:text-red-400 border border-slate-700 transition backdrop-blur-sm">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-mono text-cyan-300 font-bold flex items-center space-x-1">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_rgba(34,211,238,0.8)]"></span><span>ONLINE</span>
+                </span>
+              </div>
+            </div>
+            <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto custom-scrollbar space-y-3.5 py-4 pr-1 font-mono text-xs relative">
+              {displayedMessages.length === 0 && chatTab === 'team' && (
+                <div className="text-center text-slate-500 text-xs py-8">
+                  No team messages yet. Start the conversation!
+                </div>
+              )}
+              {displayedMessages.map((msg, index) => {
+                const isUser = msg.sender === currentUsername;
+                const isSystem = msg.type === 'system' || msg.type === 'ai';
+                if (isSystem) return (
+                  <div key={msg.id || index} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-center text-slate-300 text-xs backdrop-blur-sm">
+                    <span>{msg.text}</span>
+                  </div>
+                );
+                return (
+                  <div key={msg.id || index} className={`flex flex-col space-y-1 ${isUser ? 'items-end' : 'items-start'}`}>
+                    <div className="flex items-center space-x-2 text-[10px] text-slate-400 px-1 font-extrabold">
+                      <span>{msg.avatar} {msg.sender}</span><span>â€¢</span><span>{msg.time}</span>
+                      {isUser && chatTab === 'bot' && (
+                        <button onClick={() => setBotChatMessages(prev => prev.filter((_, idx) => idx !== index))} className="text-slate-500 hover:text-red-400 ml-1" title="Delete message">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                      {isUser && chatTab === 'team' && msg.id && (
+                        <button onClick={() => handleDeleteTeamMessage(msg.id)} className="text-slate-500 hover:text-red-400 ml-1" title="Delete message">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <div className={`p-3.5 rounded-2xl max-w-[85%] leading-relaxed shadow-md backdrop-blur-sm ${isUser ? 'bg-cyan-500/20 text-cyan-100 border border-cyan-500/40 rounded-tr-sm' : 'bg-slate-800/60 text-slate-200 border border-slate-700 rounded-tl-sm'}`}>
+                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                      {msg.audioUrl && <AudioPlayer src={msg.audioUrl} initialDuration={msg.duration || 0} theme={chatTab === 'team' ? 'purple' : 'cyan'} />}
+                    </div>
+                  </div>
+                );
+              })}
+              {isThinking && chatTab === 'bot' && (
+                <div className="flex items-center space-x-2 text-slate-400 font-mono text-xs bg-slate-800/60 p-3 rounded-xl border border-slate-700 w-fit backdrop-blur-sm">
+                  <Sparkles className="w-4 h-4 text-cyan-400 animate-spin" /><span>{botName || 'Aura-1'} is analyzing your input...</span>
+                </div>
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+            {hasNewMessages && !isNearBottom && (
+              <button
+                onClick={jumpToBottom}
+                className="absolute bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-2 shadow-lg shadow-cyan-500/40 z-10 transition animate-bounce"
+              >
+                <ArrowDown className="w-3.5 h-3.5" />
+                <span>New Messages</span>
+              </button>
+            )}
+            <div className="space-y-3 pt-3 border-t border-slate-800">
+              {isRecording && (
+                <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-3 backdrop-blur-sm">
+                  <div className="flex items-center justify-between text-xs font-mono text-red-300">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-3 h-3 rounded-full bg-red-500 animate-ping"></span>
+                      <span className="font-extrabold">â— REC {formatTime(recordingTime)}</span>
+                    </div>
+                    <span className="text-[10px] text-red-400 italic">Tap mic again to stop</span>
+                  </div>
+                </div>
+              )}
+              {micError && (
+                <div className="bg-rose-500/15 border border-rose-500/40 rounded-xl p-2.5 text-[11px] font-mono text-rose-300 flex items-center space-x-2 backdrop-blur-sm">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="flex-1">{micError}</span>
+                  <button onClick={() => setMicError('')} className="text-rose-400 hover:text-white"><X className="w-3 h-3" /></button>
+                </div>
+              )}
               
