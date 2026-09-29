@@ -429,14 +429,14 @@ export default function Profile() {
   return (
     <div className="w-full max-w-[1400px] mx-auto p-4 sm:p-6 font-mono space-y-6 sm:space-y-8 animate-fadeIn min-h-screen relative">
       
-      {/* Indigo/Blue Background Glows — identity depth */}
+      {/* Indigo/Blue Background Glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[150px] animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-blue-500/8 rounded-full blur-[120px]" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-violet-400/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* Profile Header Card — Frosted Glass (Mobile Optimized) */}
+      {/* Profile Header Card */}
       <div className="p-5 sm:p-8 rounded-3xl bg-slate-900/40 border border-indigo-500/20 shadow-2xl shadow-indigo-500/10 backdrop-blur-2xl relative overflow-hidden">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-indigo-400/60 to-transparent" />
         
@@ -509,7 +509,7 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Action Buttons Row (Wraps nicely on mobile) */}
+          {/* Action Buttons Row */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-2 border-t border-indigo-500/10">
             <button onClick={() => { sounds?.playClick?.(); setShowProModal(true); }} className={`flex-1 sm:flex-none px-3 sm:px-4 py-2.5 rounded-xl border font-black text-[10px] sm:text-xs transition flex items-center justify-center sm:justify-start gap-2 shadow-lg group ${isPro ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border-amber-500/50 text-amber-300 hover:border-amber-400'}`}>
               <Crown className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform flex-shrink-0" /> <span>{isPro ? 'PRO ACTIVE' : 'PRO CLEARANCE'}</span>
@@ -531,7 +531,7 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Stats Grid — Frosted Glass */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-slate-900/40 border border-indigo-500/20 space-y-2 shadow-lg shadow-indigo-500/5 backdrop-blur-2xl relative">
           <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-indigo-400/40 to-transparent" />
@@ -588,7 +588,7 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Badges Card — Frosted Glass */}
+      {/* Badges Card */}
       <div className="p-5 sm:p-8 rounded-3xl bg-slate-900/40 border border-indigo-500/20 space-y-6 shadow-2xl shadow-indigo-500/10 backdrop-blur-2xl relative">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-indigo-400/60 to-transparent" />
         
@@ -628,16 +628,16 @@ export default function Profile() {
       </div>
 
       {/* ============================================================================ */}
-      {/* MODALS — Moved to root level to prevent clipping by parent overflow-hidden */}
+      {/* MODALS — All at root level, no nesting inside cards */}
       {/* ============================================================================ */}
 
-      {/* Avatar Picker Modal — Full Screen Overlay */}
+      {/* Avatar Picker Modal — FIXED: No sticky header, no negative margins, clean groups */}
       {showAvatarPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-2xl bg-slate-900/95 border border-indigo-500/40 rounded-3xl shadow-2xl shadow-indigo-500/20 relative backdrop-blur-2xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-2xl bg-slate-900 border border-indigo-500/40 rounded-3xl shadow-2xl shadow-indigo-500/20 flex flex-col max-h-[85vh] overflow-hidden">
             
-            {/* Sticky Header */}
-            <div className="flex justify-between items-center border-b border-indigo-500/20 p-5 bg-slate-900/95 backdrop-blur-md z-10 flex-shrink-0">
+            {/* Header — NOT sticky, just a normal flex-shrink-0 header */}
+            <div className="flex justify-between items-center border-b border-indigo-500/20 px-5 py-4 bg-slate-900 flex-shrink-0">
               <h3 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-indigo-400" /> Select Operative Avatar
               </h3>
@@ -646,37 +646,35 @@ export default function Profile() {
               </button>
             </div>
             
-            {/* Scrollable Content */}
-            <div className="overflow-y-auto p-5 custom-scrollbar flex-1">
-              <div className="space-y-6">
-                {AVATAR_CATEGORIES.map((category) => (
-                  <div key={category.name} className="space-y-3">
-                    <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20 pb-2">{category.name}</h4>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                      {category.presets.map((preset) => (
-                        <button 
-                          key={preset.id} 
-                          onClick={() => handleSelectAvatar(preset)} 
-                          className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-700 hover:border-indigo-500/50 hover:bg-slate-800/80 flex flex-col items-center justify-center gap-2 transition-all text-center group backdrop-blur-sm hover:shadow-md hover:shadow-indigo-500/10 hover:-translate-y-0.5"
-                        >
-                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br ${preset.bg} flex items-center justify-center text-xl sm:text-2xl shadow-lg group-hover:scale-110 transition-transform`}>
-                            {preset.icon}
-                          </div>
-                          <span className="text-[9px] sm:text-[10px] font-bold text-slate-300 group-hover:text-white truncate w-full leading-tight">
-                            {preset.name}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
+            {/* Scrollable Content — Clean padding, no overlap */}
+            <div className="overflow-y-auto custom-scrollbar flex-1 p-5 space-y-6">
+              {AVATAR_CATEGORIES.map((category) => (
+                <div key={category.name} className="space-y-3">
+                  <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20 pb-2">{category.name}</h4>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                    {category.presets.map((preset) => (
+                      <button 
+                        key={preset.id} 
+                        onClick={() => handleSelectAvatar(preset)} 
+                        className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-700 hover:border-indigo-500/50 hover:bg-slate-800/80 flex flex-col items-center justify-center gap-2 transition-all text-center group backdrop-blur-sm hover:shadow-md hover:shadow-indigo-500/10 hover:-translate-y-0.5"
+                      >
+                        <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br ${preset.bg} flex items-center justify-center text-xl sm:text-2xl shadow-lg group-hover:scale-110 transition-transform`}>
+                          {preset.icon}
+                        </div>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-slate-300 group-hover:text-white truncate w-full leading-tight">
+                          {preset.name}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* PRO Modal — Frosted Glass */}
+      {/* PRO Modal */}
       {showProModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-md bg-slate-900/90 border border-amber-500/50 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl shadow-amber-500/20 relative backdrop-blur-2xl">
@@ -702,7 +700,7 @@ export default function Profile() {
         </div>
       )}
 
-      {/* Settings Modal — Frosted Glass */}
+      {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-lg bg-slate-900/90 border border-indigo-500/30 rounded-3xl p-5 sm:p-8 space-y-5 sm:space-y-6 shadow-2xl shadow-indigo-500/20 relative max-h-[90vh] overflow-y-auto backdrop-blur-2xl">
