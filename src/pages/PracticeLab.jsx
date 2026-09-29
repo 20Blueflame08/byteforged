@@ -1067,81 +1067,62 @@ export default function PracticeLab() {
         </div>
       </div>
 
-      {/* TEAM PROFILE MODAL — Frosted Glass (Mobile Fixed: Stacked Layout) */}
+     {/* 🔧 NEW: UNIFIED TEAM PROFILE MODAL — PracticeLab Pattern */}
       {isTeamProfileOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          {/* Added overflow-x-hidden to guarantee nothing breaks out horizontally */}
-          <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-5 md:p-9 max-w-2xl w-full space-y-6 shadow-2xl shadow-purple-500/20 backdrop-blur-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden relative">
-            
-            {/* Sticky Header */}
-            <div className="flex justify-between items-center border-b border-slate-700 pb-4 sticky top-0 bg-slate-900/95 backdrop-blur-md z-10 -mx-5 px-5 md:-mx-9 md:px-9 pt-1">
-              <h3 className="text-lg md:text-xl font-black text-white flex items-center gap-3">
-                <Users className="w-5 h-5 md:w-6 md:h-6 text-purple-400 flex-shrink-0" /> 
-                <span className="truncate">Team Profile Manager</span>
-              </h3>
-              <button onClick={() => setIsTeamProfileOpen(false)} className="text-slate-400 hover:text-white text-xl font-black flex-shrink-0 p-1">✕</button>
+          <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-7 md:p-9 max-w-2xl w-full space-y-7 shadow-2xl shadow-purple-500/20 backdrop-blur-2xl">
+            <div className="flex justify-between items-center border-b border-slate-700 pb-5">
+              <h3 className="text-xl font-black text-white flex items-center gap-3"><Users className="w-6 h-6 text-purple-400" /> Team Profile Manager</h3>
+              <button onClick={() => setIsTeamProfileOpen(false)} className="text-slate-400 hover:text-white text-lg font-black">✕</button>
             </div>
-
             <div className="space-y-5">
-              {/* Team Name Input */}
               <div>
                 <label className="block text-xs text-slate-400 font-black uppercase tracking-widest mb-2">Custom Team Name</label>
                 <input 
                   type="text" 
                   value={teamName} 
                   onChange={(e) => setTeamName(e.target.value)} 
-                  className="w-full bg-slate-950/60 border border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-purple-500/50 shadow-inner backdrop-blur-sm" 
+                  placeholder="e.g. Alpha Squad, ByteForged Elites..."
+                  className="w-full bg-slate-950/60 border border-slate-700 rounded-xl px-5 py-4 text-base font-black text-white focus:outline-none focus:border-purple-500/50 shadow-inner backdrop-blur-sm" 
                 />
               </div>
-
-              {/* Roster List */}
               <div className="space-y-3">
                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Live Roster & Self-Selected Roles</h4>
-                <div className="max-h-64 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                <div className="max-h-64 overflow-y-auto space-y-2.5 pr-1 custom-scrollbar">
                   {sortedRoster.length === 0 ? (
                     <p className="text-center text-slate-500 text-sm py-8">No team members yet. Invite friends from the Friends Hub!</p>
                   ) : (
                     sortedRoster.map((m, idx) => {
                       const isMe = m.id === user?.id;
                       return (
-                        // Changed to flex-col always on mobile to prevent horizontal overflow
-                        <div key={m.id} className="flex flex-col gap-4 p-4 bg-slate-900/60 border border-slate-700 rounded-xl text-xs font-bold shadow-md backdrop-blur-sm">
-                          
-                          {/* Top Row: Avatar & Name */}
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="font-mono text-slate-500 text-sm flex-shrink-0 w-4 text-center">{idx + 1}</span>
-                            <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center text-xl border border-slate-700 flex-shrink-0">
-                              {m.avatar || '👤'}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-white text-sm font-black truncate">{m.username}</span>
-                                {m.isLeader && (
-                                  <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40 flex-shrink-0 font-bold">LEADER</span>
-                                )}
-                                {isMe && (
-                                  <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/40 flex-shrink-0 font-bold">YOU</span>
-                                )}
-                              </div>
-                              <span className="block text-xs text-purple-300 font-extrabold mt-0.5 truncate">{m.role}</span>
+                        <div key={m.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-900/60 border border-slate-700 rounded-xl text-xs font-bold shadow-md backdrop-blur-sm">
+                          <div className="flex items-center gap-4">
+                            <span className="font-mono text-slate-500 text-sm">{idx + 1}</span>
+                            <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center text-xl border border-slate-700">{m.avatar || '👤'}</div>
+                            <div>
+                              <span className="text-white text-sm font-black flex items-center gap-2">
+                                {m.username}
+                                {m.isLeader && <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40">LEADER</span>}
+                                {isMe && <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/40">YOU</span>}
+                              </span>
+                              <span className="block text-xs text-purple-300 font-extrabold mt-0.5">{m.role}</span>
                             </div>
                           </div>
                           
-                          {/* Bottom Row: Controls (Stacked neatly below on mobile) */}
                           {isMe && (
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full pl-7">
+                            <div className="flex items-center gap-2">
                               <select 
                                 value={m.role} 
                                 onChange={(e) => handleSelectMyRole(e.target.value)} 
-                                className="w-full sm:w-auto flex-1 bg-slate-950 border border-slate-700 text-white text-[11px] font-black rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500/50 uppercase tracking-wider backdrop-blur-sm appearance-none"
+                                className="bg-slate-950 border border-slate-700 text-white text-[10px] font-black rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500/50 uppercase tracking-wider backdrop-blur-sm"
                               >
                                 {SELF_ROLES.map(role => (<option key={role} value={role}>{role}</option>))}
                               </select>
                               <button 
                                 onClick={handleLeaveTeam} 
-                                className="w-full sm:w-auto py-2 px-4 bg-slate-800 hover:bg-rose-500/20 border border-slate-600 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5 flex-shrink-0"
+                                className="py-1.5 px-3 bg-slate-800 hover:bg-rose-500/20 border border-slate-600 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1"
                               >
-                                <LogOut className="w-3.5 h-3.5" /> Leave Team
+                                <LogOut className="w-3 h-3" /> Leave
                               </button>
                             </div>
                           )}
@@ -1152,18 +1133,16 @@ export default function PracticeLab() {
                 </div>
               </div>
             </div>
-
-            {/* Sticky Footer */}
-            <div className="pt-4 border-t border-slate-700 flex flex-col sm:flex-row gap-3 sticky bottom-0 bg-slate-900/95 backdrop-blur-md -mx-5 px-5 md:-mx-9 md:px-9 pb-1">
+            <div className="pt-5 border-t border-slate-700 flex flex-col sm:flex-row gap-4">
               <button 
-                onClick={() => { setIsTeamProfileOpen(false); useAppStore.getState().setActiveTab('friends'); }} 
-                className="flex-1 py-3 px-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-mono font-extrabold flex items-center justify-center space-x-2 transition shadow-lg shadow-purple-600/30"
+                onClick={() => { setIsTeamProfileOpen(false); if (setActiveTab) setActiveTab('friends'); }} 
+                className="flex-1 py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-mono font-extrabold flex items-center justify-center space-x-2 transition shadow-lg shadow-purple-600/30"
               >
                 <UserPlus className="w-4 h-4" /><span>Invite Friends</span>
               </button>
               <button 
                 onClick={() => setIsTeamProfileOpen(false)} 
-                className="w-full sm:w-auto px-7 py-3 bg-slate-800 hover:bg-slate-700 text-white font-black text-xs rounded-xl transition-all uppercase tracking-wider"
+                className="sm:w-auto w-full px-7 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-black text-xs rounded-xl transition-all uppercase tracking-wider"
               >
                 Save & Close
               </button>
