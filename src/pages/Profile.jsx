@@ -70,9 +70,6 @@ const AVATAR_CATEGORIES = [
   }
 ];
 
-// Flatten for easy lookup if needed
-const ALL_AVATARS = AVATAR_CATEGORIES.flatMap(c => c.presets);
-
 export default function Profile() {
   const { 
     user, userProfile, updateProfile, logoutUser, 
@@ -451,7 +448,7 @@ export default function Profile() {
               <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br ${userProfile?.avatarBg || 'from-indigo-500 to-blue-600'} flex items-center justify-center text-4xl sm:text-5xl shadow-xl border-2 border-indigo-400/60 shadow-indigo-500/20`}>
                 {userProfile?.avatar || '⚔️'}
               </div>
-              <button onClick={() => { sounds?.playClick?.(); setShowAvatarPicker(!showAvatarPicker); }} className="absolute -bottom-2 -right-2 p-2 rounded-xl bg-slate-950/80 border border-indigo-500/40 text-indigo-400 hover:bg-slate-800 transition shadow-lg backdrop-blur-sm" title="Change Avatar">
+              <button onClick={() => { sounds?.playClick?.(); setShowAvatarPicker(true); }} className="absolute -bottom-2 -right-2 p-2 rounded-xl bg-slate-950/80 border border-indigo-500/40 text-indigo-400 hover:bg-slate-800 transition shadow-lg backdrop-blur-sm" title="Change Avatar">
                 <Edit3 className="w-4 h-4" />
               </button>
             </div>
@@ -532,36 +529,6 @@ export default function Profile() {
             </button>
           </div>
         </div>
-
-        {/* Avatar Picker Modal (Replaces inline grid for better mobile UX) */}
-        {showAvatarPicker && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-            <div className="w-full max-w-2xl bg-slate-900/90 border border-indigo-500/40 rounded-3xl p-5 sm:p-6 shadow-2xl shadow-indigo-500/20 relative backdrop-blur-2xl max-h-[85vh] flex flex-col">
-              <div className="flex justify-between items-center border-b border-indigo-500/20 pb-4 mb-4 sticky top-0 bg-slate-900/95 backdrop-blur-md z-10 -mx-5 px-5 sm:-mx-6 sm:px-6 pt-1">
-                <h3 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-indigo-400" /> Select Operative Avatar
-                </h3>
-                <button onClick={() => setShowAvatarPicker(false)} className="text-slate-400 hover:text-white p-1"><X className="w-5 h-5" /></button>
-              </div>
-              
-              <div className="overflow-y-auto pr-2 custom-scrollbar space-y-6 flex-1">
-                {AVATAR_CATEGORIES.map((category) => (
-                  <div key={category.name} className="space-y-3">
-                    <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20 pb-1">{category.name}</h4>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 sm:gap-3">
-                      {category.presets.map((preset) => (
-                        <button key={preset.id} onClick={() => handleSelectAvatar(preset)} className="p-2 sm:p-3 rounded-xl bg-slate-950/60 border border-slate-700 hover:border-indigo-500/50 flex flex-col items-center justify-center gap-1.5 transition text-center group backdrop-blur-sm hover:shadow-md hover:shadow-indigo-500/10">
-                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br ${preset.bg} flex items-center justify-center text-xl sm:text-2xl shadow-lg`}>{preset.icon}</div>
-                          <span className="text-[9px] sm:text-[10px] font-bold text-slate-300 group-hover:text-white truncate w-full">{preset.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Stats Grid — Frosted Glass */}
@@ -659,6 +626,55 @@ export default function Profile() {
           ))}
         </div>
       </div>
+
+      {/* ============================================================================ */}
+      {/* MODALS — Moved to root level to prevent clipping by parent overflow-hidden */}
+      {/* ============================================================================ */}
+
+      {/* Avatar Picker Modal — Full Screen Overlay */}
+      {showAvatarPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-2xl bg-slate-900/95 border border-indigo-500/40 rounded-3xl shadow-2xl shadow-indigo-500/20 relative backdrop-blur-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            
+            {/* Sticky Header */}
+            <div className="flex justify-between items-center border-b border-indigo-500/20 p-5 bg-slate-900/95 backdrop-blur-md z-10 flex-shrink-0">
+              <h3 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-400" /> Select Operative Avatar
+              </h3>
+              <button onClick={() => setShowAvatarPicker(false)} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Scrollable Content */}
+            <div className="overflow-y-auto p-5 custom-scrollbar flex-1">
+              <div className="space-y-6">
+                {AVATAR_CATEGORIES.map((category) => (
+                  <div key={category.name} className="space-y-3">
+                    <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20 pb-2">{category.name}</h4>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                      {category.presets.map((preset) => (
+                        <button 
+                          key={preset.id} 
+                          onClick={() => handleSelectAvatar(preset)} 
+                          className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-700 hover:border-indigo-500/50 hover:bg-slate-800/80 flex flex-col items-center justify-center gap-2 transition-all text-center group backdrop-blur-sm hover:shadow-md hover:shadow-indigo-500/10 hover:-translate-y-0.5"
+                        >
+                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br ${preset.bg} flex items-center justify-center text-xl sm:text-2xl shadow-lg group-hover:scale-110 transition-transform`}>
+                            {preset.icon}
+                          </div>
+                          <span className="text-[9px] sm:text-[10px] font-bold text-slate-300 group-hover:text-white truncate w-full leading-tight">
+                            {preset.name}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PRO Modal — Frosted Glass */}
       {showProModal && (
