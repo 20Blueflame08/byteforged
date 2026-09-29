@@ -1,6 +1,6 @@
 // src/lib/aura.js (Aura-1 AI Engine — Groq chat + Web Speech API transcription, NO Puter)
 
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_API_KEY = import.meta.env.local.VITE_GROQ_API_KEY;
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 /**
