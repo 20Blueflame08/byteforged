@@ -1,4 +1,4 @@
-// src/lib/aura.js (Aura-1 AI Engine — Puter Grok 4.7, user-pays, text + speech-to-text only)
+// src/lib/aura.js (Aura-1 AI Engine — Puter Grok 4.7 + xAI Speech-to-Text, verification-free)
 
 let puterReadyPromise = null;
 
@@ -28,8 +28,7 @@ function loadPuterScript() {
   return puterReadyPromise;
 }
 
-// 🔧 FIX: Preload the SDK immediately on app start so the sign-in popup
-// can open inside the browser's user-gesture window (no more blank popups).
+// Preload the SDK immediately on app start so popups open inside the gesture window
 if (typeof window !== 'undefined') {
   loadPuterScript().catch((e) => console.warn('Puter preload failed:', e));
 }
@@ -49,7 +48,6 @@ export async function isPuterSignedIn() {
 
 /**
  * Opens the Puter sign-in popup explicitly and waits for completion.
- * @returns {Promise<boolean>} true if signed in after the flow
  */
 export async function ensurePuterSignIn() {
   try {
@@ -76,18 +74,44 @@ function withTimeout(promise, ms, label) {
 }
 
 /**
- * Transcribes audio files (voice notes / mic recordings) using Puter AI
- * @param {Blob|File} audioFile - Audio blob or file
+ * 🔧 Transcribes audio using xAI speech-to-text via Puter.
+ * The xAI provider does NOT require phone verification (OpenAI models do).
+ * @param {Blob|File} audioFile - Audio blob or file from the recorder
  * @returns {Promise<string>} Transcribed text string
  */
 export async function transcribeAudio(audioFile) {
   const puter = await loadPuterScript();
+
+  // Primary: object form with xAI provider (verification-free)
+  try {
+    const transcript = await withTimeout(
+      puter.ai.speech2txt({
+        file: audioFile,
+        provider: 'xai',
+        language: 'en',
+        format: true
+      }),
+      60000,
+      'Speech-to-text'
+    );
+    if (typeof transcript === 'string') return transcript;
+    return transcript?.text || '';
+  } catch (error) {
+    console.warn('xAI speech2txt (object form) failed, retrying positional form:', error);
+  }
+
+  // Fallback: positional form with xAI provider
   const transcript = await withTimeout(
-    puter.ai.speech2txt(audioFile, { model: "gpt-4o-mini-transcribe" }),
+    puter.ai.speech2txt(audioFile, {
+      provider: 'xai',
+      language: 'en',
+      format: true
+    }),
     60000,
     'Speech-to-text'
   );
-  return transcript?.text || transcript || "";
+  if (typeof transcript === 'string') return transcript;
+  return transcript?.text || '';
 }
 
 /**
@@ -102,7 +126,7 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
   try {
     const puter = await loadPuterScript();
 
-    // 🔧 AUTH GATE: sign in FIRST with a clear flow, never hang mid-chat
+    // AUTH GATE: sign in FIRST with a clear flow, never hang mid-chat
     if (!(await puter.auth.isSignedIn())) {
       const signedIn = await ensurePuterSignIn();
       if (!signedIn) {
@@ -112,7 +136,7 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
 
     let finalInputText = userPrompt;
 
-    // Handle audio input (voice notes) — transcribe first
+    // Handle audio input (voice notes) — transcribe via xAI (no phone verification)
     if (userPrompt instanceof Blob || userPrompt instanceof File) {
       finalInputText = await transcribeAudio(userPrompt);
       if (!finalInputText || !finalInputText.trim()) {
@@ -123,7 +147,7 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
     const systemInstruction = `You are ${botName}, an expert, witty, and direct CS & ICT AI evaluator for ByteForged Academy. Grade or answer the user's input accurately and concisely (under 100 words). Be encouraging but honest.`;
     const fullPrompt = `${systemInstruction}\n\n[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}`;
 
-    // Query Grok 4.7 with a 90s safety timeout (no more infinite "analyzing...")
+    // Query Grok 4.7 with a 90s safety timeout
     const response = await withTimeout(
       puter.ai.chat(fullPrompt, { model: "x-ai/grok-4.7", temperature: 0.6 }),
       90000,
