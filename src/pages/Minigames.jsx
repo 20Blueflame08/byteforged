@@ -150,7 +150,7 @@ function AudioPlayer({ src, initialDuration = 0, theme = 'amber' }) {
         <button onClick={togglePlay} className={`p-2 rounded-lg ${btnClass} text-slate-950 transition flex-shrink-0 shadow-md`}>
           {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
         </button>
-        <div className="flex-1 space-y-1">
+        <div className="flex-1 space-y-1 min-w-0">
           <div className="relative w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
             <div className="absolute inset-y-0 left-0 bg-amber-400 rounded-full transition-all" style={{ width: `${progress}%` }} />
           </div>
@@ -203,18 +203,18 @@ const MatchingPairGame = ({ data, onFullyCompleted }) => {
   };
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <p className="text-slate-200 text-lg font-bold leading-relaxed">{data.instructions}</p>
-        <span className="text-xs font-mono font-black text-amber-400">Potential: {Math.round(localScore)} PTS</span>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <p className="text-slate-200 text-base sm:text-lg font-bold leading-relaxed break-words">{data.instructions}</p>
+        <span className="text-xs font-mono font-black text-amber-400 whitespace-nowrap">Potential: {Math.round(localScore)} PTS</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-3.5">
           <h4 className="text-xs font-black text-amber-400 uppercase tracking-widest">Concepts</h4>
-          {data.pairs.map(p => (<button key={p.key} onClick={() => handleKeyClick(p.key)} disabled={!!matches[p.key]} className={`w-full text-left p-5 rounded-2xl border text-base font-bold transition-all backdrop-blur-sm ${matches[p.key] ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-400 line-through opacity-60' : selectedKey === p.key ? 'bg-amber-950/80 border-amber-400 text-amber-100 shadow-lg shadow-amber-500/30' : 'bg-slate-950/60 border-slate-800 text-slate-200 hover:border-slate-700'}`}>{p.key}</button>))}
+          {data.pairs.map(p => (<button key={p.key} onClick={() => handleKeyClick(p.key)} disabled={!!matches[p.key]} className={`w-full text-left p-4 sm:p-5 rounded-2xl border text-sm sm:text-base font-bold transition-all backdrop-blur-sm break-words ${matches[p.key] ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-400 line-through opacity-60' : selectedKey === p.key ? 'bg-amber-950/80 border-amber-400 text-amber-100 shadow-lg shadow-amber-500/30' : 'bg-slate-950/60 border-slate-800 text-slate-200 hover:border-slate-700'}`}>{p.key}</button>))}
         </div>
         <div className="space-y-3.5">
           <h4 className="text-xs font-black text-amber-400 uppercase tracking-widest">Definitions</h4>
-          {data.pairs.map(p => (<button key={p.target} onClick={() => handleTargetClick(p.target)} disabled={Object.values(matches).includes(p.target)} className={`w-full text-left p-5 rounded-2xl border text-base font-bold transition-all backdrop-blur-sm ${Object.values(matches).includes(p.target) ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-400 opacity-60' : 'bg-slate-950/60 border-slate-800 text-slate-200 hover:border-amber-500/50'}`}>{p.target}</button>))}
+          {data.pairs.map(p => (<button key={p.target} onClick={() => handleTargetClick(p.target)} disabled={Object.values(matches).includes(p.target)} className={`w-full text-left p-4 sm:p-5 rounded-2xl border text-sm sm:text-base font-bold transition-all backdrop-blur-sm break-words ${Object.values(matches).includes(p.target) ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-400 opacity-60' : 'bg-slate-950/60 border-slate-800 text-slate-200 hover:border-amber-500/50'}`}>{p.target}</button>))}
         </div>
       </div>
     </div>
@@ -241,18 +241,18 @@ const CategoryGame = ({ data, onFullyCompleted }) => {
   };
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <p className="text-slate-200 text-lg font-bold leading-relaxed">{data.instructions}</p>
-        <span className="text-xs font-mono font-black text-amber-400">Potential: {Math.round(localScore)} PTS</span>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <p className="text-slate-200 text-base sm:text-lg font-bold leading-relaxed break-words">{data.instructions}</p>
+        <span className="text-xs font-mono font-black text-amber-400 whitespace-nowrap">Potential: {Math.round(localScore)} PTS</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {data.categories.map(cat => (
-          <div key={cat} className="p-6 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-4 shadow-xl backdrop-blur-sm">
-            <h4 className="font-black text-amber-400 text-sm border-b border-slate-800 pb-3 uppercase tracking-widest">{cat}</h4>
-            <div className="min-h-[160px] space-y-2.5">
+          <div key={cat} className="p-5 sm:p-6 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-4 shadow-xl backdrop-blur-sm">
+            <h4 className="font-black text-amber-400 text-sm border-b border-slate-800 pb-3 uppercase tracking-widest break-words">{cat}</h4>
+            <div className="min-h-[120px] sm:min-h-[160px] space-y-2.5">
               {Object.entries(classified).filter(([_, c]) => c === cat).map(([id]) => {
                 const item = items.find(i => i.id === id);
-                return <div key={id} className="p-3.5 bg-emerald-950/50 border border-emerald-500/40 rounded-xl text-sm font-bold text-emerald-300">{item.text}</div>;
+                return <div key={id} className="p-3.5 bg-emerald-950/50 border border-emerald-500/40 rounded-xl text-sm font-bold text-emerald-300 break-words">{item.text}</div>;
               })}
             </div>
           </div>
@@ -262,9 +262,9 @@ const CategoryGame = ({ data, onFullyCompleted }) => {
         <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Unclassified Items</h4>
         <div className="flex flex-wrap gap-4">
           {items.filter(i => !classified[i.id]).map(item => (
-            <div key={item.id} className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl flex flex-col gap-4 min-w-[220px] shadow-lg backdrop-blur-sm">
-              <span className="text-sm font-bold text-slate-200">{item.text}</span>
-              <div className="flex gap-2.5">
+            <div key={item.id} className="p-4 sm:p-5 bg-slate-950/60 border border-slate-800 rounded-2xl flex flex-col gap-4 w-full sm:min-w-[220px] sm:w-auto sm:flex-1 shadow-lg backdrop-blur-sm">
+              <span className="text-sm font-bold text-slate-200 break-words">{item.text}</span>
+              <div className="flex flex-wrap gap-2.5">
                 {data.categories.map(cat => (<button key={cat} onClick={() => handleClassify(item, cat)} className="px-3.5 py-2 text-xs bg-amber-950/80 hover:bg-amber-900 border border-amber-700 text-amber-300 font-extrabold rounded-xl transition-all">{cat}</button>))}
               </div>
             </div>
@@ -300,22 +300,22 @@ const SequenceGame = ({ data, onFullyCompleted }) => {
   };
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <p className="text-slate-200 text-lg font-bold leading-relaxed">{data.instructions}</p>
-        <span className="text-xs font-mono font-black text-amber-400">Potential: {Math.round(localScore)} PTS</span>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <p className="text-slate-200 text-base sm:text-lg font-bold leading-relaxed break-words">{data.instructions}</p>
+        <span className="text-xs font-mono font-black text-amber-400 whitespace-nowrap">Potential: {Math.round(localScore)} PTS</span>
       </div>
       <div className="space-y-3.5">
         {list.map((step, idx) => (
-          <div key={step.id} className="flex items-center justify-between p-5 bg-slate-950/60 border border-slate-800 rounded-2xl text-base font-bold shadow-md backdrop-blur-sm">
-            <span className="text-slate-200"><span className="text-amber-400 font-mono mr-3 text-lg">{idx + 1}.</span>{step.text}</span>
-            <div className="flex gap-2.5">
+          <div key={step.id} className="flex items-center justify-between gap-3 p-4 sm:p-5 bg-slate-950/60 border border-slate-800 rounded-2xl text-sm sm:text-base font-bold shadow-md backdrop-blur-sm">
+            <span className="text-slate-200 break-words"><span className="text-amber-400 font-mono mr-2 sm:mr-3 text-lg">{idx + 1}.</span>{step.text}</span>
+            <div className="flex gap-2 flex-shrink-0">
               <button disabled={idx === 0} onClick={() => move(idx, idx - 1)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 rounded-xl text-slate-200 text-base font-black transition-all">↑</button>
               <button disabled={idx === list.length - 1} onClick={() => move(idx, idx + 1)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 rounded-xl text-slate-200 text-base font-black transition-all">↓</button>
             </div>
           </div>
         ))}
       </div>
-      <button onClick={handleVerify} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-base transition-all shadow-xl shadow-amber-500/30 uppercase tracking-wider">Verify Order Sequence</button>
+      <button onClick={handleVerify} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-sm sm:text-base transition-all shadow-xl shadow-amber-500/30 uppercase tracking-wider">Verify Order Sequence</button>
     </div>
   );
 };
@@ -344,13 +344,13 @@ const ScenarioGame = ({ data, onFullyCompleted }) => {
   };
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <p className="text-slate-200 text-lg font-bold leading-relaxed">{data.instructions}</p>
-        <span className="text-xs font-mono font-black text-amber-400">Potential: {Math.round(localScore)} PTS</span>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <p className="text-slate-200 text-base sm:text-lg font-bold leading-relaxed break-words">{data.instructions}</p>
+        <span className="text-xs font-mono font-black text-amber-400 whitespace-nowrap">Potential: {Math.round(localScore)} PTS</span>
       </div>
-      <div className="p-7 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-6 shadow-xl backdrop-blur-sm">
+      <div className="p-5 sm:p-7 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-6 shadow-xl backdrop-blur-sm">
         <div className="flex justify-between items-center text-xs text-amber-400 font-black uppercase tracking-widest"><span>Scenario {currentIdx + 1} of {totalItems}</span></div>
-        <p className="text-lg font-bold text-slate-200 leading-snug">{scenario.prompt}</p>
+        <p className="text-base sm:text-lg font-bold text-slate-200 leading-snug break-words">{scenario.prompt}</p>
         <div className="space-y-3.5">
           {scenario.options.map((opt, idx) => {
             const isSelected = answered[currentIdx] === idx;
@@ -360,7 +360,7 @@ const ScenarioGame = ({ data, onFullyCompleted }) => {
               if (isCorrect) btnStyle = "bg-emerald-950/70 border-emerald-500 text-emerald-200 font-black";
               else if (isSelected) btnStyle = "bg-rose-950/70 border-rose-500 text-rose-200 font-black";
             }
-            return (<button key={idx} onClick={() => handleSelect(idx)} disabled={answered[currentIdx] !== undefined} className={`w-full text-left p-5 border rounded-2xl text-base transition-all font-semibold ${btnStyle}`}>{opt}</button>);
+            return (<button key={idx} onClick={() => handleSelect(idx)} disabled={answered[currentIdx] !== undefined} className={`w-full text-left p-4 sm:p-5 border rounded-2xl text-sm sm:text-base transition-all font-semibold break-words ${btnStyle}`}>{opt}</button>);
           })}
         </div>
       </div>
@@ -388,17 +388,17 @@ const BinaryClassifierGame = ({ data, onFullyCompleted }) => {
   };
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <p className="text-slate-200 text-lg font-bold leading-relaxed">{data.instructions}</p>
-        <span className="text-xs font-mono font-black text-amber-400">Potential: {Math.round(localScore)} PTS</span>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <p className="text-slate-200 text-base sm:text-lg font-bold leading-relaxed break-words">{data.instructions}</p>
+        <span className="text-xs font-mono font-black text-amber-400 whitespace-nowrap">Potential: {Math.round(localScore)} PTS</span>
       </div>
       {!completed ? (
-        <div className="p-9 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-7 text-center shadow-xl backdrop-blur-sm">
+        <div className="p-5 sm:p-9 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-7 text-center shadow-xl backdrop-blur-sm">
           <span className="text-xs text-amber-400 font-black uppercase tracking-widest">Item {currentIdx + 1} of {totalItems}</span>
-          <p className="text-xl font-mono font-bold text-slate-200 p-7 bg-slate-900/80 rounded-2xl border border-slate-800 shadow-inner">{item.text}</p>
-          <div className="flex justify-center gap-6">
-            <button onClick={() => handleVote('Safe')} className="px-10 py-4 bg-emerald-600 hover:bg-emerald-500 text-white text-base font-black rounded-2xl transition-all shadow-xl shadow-emerald-600/30 uppercase tracking-wider">Mark Safe</button>
-            <button onClick={() => handleVote('Threat')} className="px-10 py-4 bg-rose-600 hover:bg-rose-500 text-white text-base font-black rounded-2xl transition-all shadow-xl shadow-rose-600/30 uppercase tracking-wider">Mark Threat</button>
+          <p className="text-lg sm:text-xl font-mono font-bold text-slate-200 p-4 sm:p-7 bg-slate-900/80 rounded-2xl border border-slate-800 shadow-inner break-words">{item.text}</p>
+          <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <button onClick={() => handleVote('Safe')} className="w-full sm:w-auto px-8 sm:px-10 py-4 bg-emerald-600 hover:bg-emerald-500 text-white text-sm sm:text-base font-black rounded-2xl transition-all shadow-xl shadow-emerald-600/30 uppercase tracking-wider">Mark Safe</button>
+            <button onClick={() => handleVote('Threat')} className="w-full sm:w-auto px-8 sm:px-10 py-4 bg-rose-600 hover:bg-rose-500 text-white text-sm sm:text-base font-black rounded-2xl transition-all shadow-xl shadow-rose-600/30 uppercase tracking-wider">Mark Threat</button>
           </div>
         </div>
       ) : <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-300 text-lg font-black text-center shadow-lg">Classification Round Complete!</div>}
@@ -435,18 +435,18 @@ const InputSolverGame = ({ data, onFullyCompleted }) => {
   };
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <p className="text-slate-200 text-lg font-bold leading-relaxed">{data.instructions}</p>
-        <span className="text-xs font-mono font-black text-amber-400">Potential: {Math.round(localScore)} PTS</span>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <p className="text-slate-200 text-base sm:text-lg font-bold leading-relaxed break-words">{data.instructions}</p>
+        <span className="text-xs font-mono font-black text-amber-400 whitespace-nowrap">Potential: {Math.round(localScore)} PTS</span>
       </div>
-      <div className="p-7 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-6 shadow-xl backdrop-blur-sm">
+      <div className="p-5 sm:p-7 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-6 shadow-xl backdrop-blur-sm">
         <span className="text-xs text-amber-400 font-black uppercase tracking-widest">Question {currentIdx + 1} of {totalItems}</span>
-        <p className="text-lg font-bold text-slate-200">{question.prompt}</p>
-        <form onSubmit={handleSubmit} className="flex gap-3.5">
-          <input type="text" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="Type your precise answer here..." className="flex-1 bg-slate-900/80 border border-slate-800 rounded-2xl px-5 py-4 text-base font-bold text-slate-200 focus:outline-none focus:border-amber-500 shadow-inner" />
-          <button type="submit" className="px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-base font-black rounded-2xl transition-all shadow-xl uppercase tracking-wider">Submit</button>
+        <p className="text-base sm:text-lg font-bold text-slate-200 break-words">{question.prompt}</p>
+        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3.5">
+          <input type="text" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="Type your precise answer here..." className="flex-1 w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-5 py-4 text-sm sm:text-base font-bold text-slate-200 focus:outline-none focus:border-amber-500 shadow-inner" />
+          <button type="submit" className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-sm sm:text-base font-black rounded-2xl transition-all shadow-xl uppercase tracking-wider whitespace-nowrap">Submit</button>
         </form>
-        {feedback && <div className={`p-4 rounded-2xl text-sm font-black ${feedback.type === 'success' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/10 text-rose-300 border border-rose-500/30'}`}>{feedback.msg}</div>}
+        {feedback && <div className={`p-4 rounded-2xl text-sm font-black break-words ${feedback.type === 'success' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/10 text-rose-300 border border-rose-500/30'}`}>{feedback.msg}</div>}
       </div>
     </div>
   );
@@ -1155,104 +1155,119 @@ export default function Minigames() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-yellow-400/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* TOP HUD — Frosted Glass */}
-      <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-6 md:p-7 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl flex flex-col xl:flex-row items-center justify-between gap-6 relative">
+      {/* TOP HUD — Frosted Glass (Mobile Optimized) */}
+      <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-5 md:p-7 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl flex flex-col gap-6 relative">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
         
-        <div className="flex items-center gap-5">
-          <div className="p-4 bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-400/30 rounded-xl shadow-md">
-            <Gamepad2 className="w-9 h-9 text-amber-400" />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5">
+          <div className="p-3 sm:p-4 bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-400/30 rounded-xl shadow-md flex-shrink-0 self-start sm:self-auto">
+            <Gamepad2 className="w-7 h-7 sm:w-9 sm:h-9 text-amber-400" />
           </div>
-          <div>
-            <div className="flex items-center gap-3.5 flex-wrap">
-              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-yellow-200">Cyber Arcade Arena</h1>
-              <span className="px-3.5 py-1.5 bg-amber-950/80 border border-amber-500/40 text-amber-300 text-xs font-black rounded-full flex items-center gap-1.5 shadow-md uppercase tracking-wider backdrop-blur-sm">
-                <Award className="w-4 h-4 text-amber-400" /> {unlockedTitle}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-yellow-200 truncate">Cyber Arcade Arena</h1>
+              <span className="px-2.5 sm:px-3.5 py-1 sm:py-1.5 bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] sm:text-xs font-black rounded-full flex items-center gap-1 sm:gap-1.5 shadow-md uppercase tracking-wider backdrop-blur-sm whitespace-nowrap">
+                <Award className="w-3 h-3 sm:w-4 sm:h-4 text-amber-400 flex-shrink-0" /> <span className="truncate max-w-[120px] sm:max-w-none">{unlockedTitle}</span>
               </span>
             </div>
-            <p className="text-sm font-mono text-amber-100/60 mt-1">26 Computing Domains • Per-Mode Progress Saved • Powered by Aura-1 AI</p>
+            <p className="text-xs sm:text-sm font-mono text-amber-100/60 mt-1 truncate">26 Computing Domains • Per-Mode Progress Saved • Powered by Aura-1 AI</p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3.5">
-          <button onClick={() => setIsTeamMode(!isTeamMode)} className={`px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all border shadow-lg backdrop-blur-sm ${isTeamMode ? 'bg-purple-500/20 border-purple-500/50 text-purple-300' : 'bg-slate-900/60 border-slate-700 text-slate-300 hover:text-white'}`}>
-            <Users className="w-4 h-4" /> {isTeamMode ? 'TEAM MODE' : 'SOLO MODE'}
-          </button>
-          <div className="px-5 py-3 bg-slate-900/60 border border-slate-700 rounded-xl flex items-center gap-3.5 shadow-md backdrop-blur-sm">
-            <Trophy className="w-6 h-6 text-amber-400" />
-            <div className="text-left">
-              <span className="block text-[10px] text-slate-400 uppercase tracking-widest font-black">{gameMode} Score</span>
-              <span className="text-base font-black text-amber-400">{currentModeScore} PTS</span>
-            </div>
-            <button onClick={handleResetCurrentMode} className="ml-2 p-1.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 rounded-lg transition" title={`Reset ${gameMode} mode`}>
-              <RotateCcw className="w-3.5 h-3.5" />
+        <div className="flex flex-col gap-3 w-full">
+          {/* Top Row Controls: Mode Toggle, Score, Streak, Team Profile */}
+          <div className="flex flex-wrap items-stretch sm:items-center gap-2 sm:gap-3.5 w-full">
+            <button onClick={() => setIsTeamMode(!isTeamMode)} className={`flex-1 sm:flex-none px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all border shadow-lg backdrop-blur-sm whitespace-nowrap ${isTeamMode ? 'bg-purple-500/20 border-purple-500/50 text-purple-300' : 'bg-slate-900/60 border-slate-700 text-slate-300 hover:text-white'}`}>
+              <Users className="w-4 h-4 flex-shrink-0" /> {isTeamMode ? 'TEAM MODE' : 'SOLO MODE'}
             </button>
+            
+            <div className="flex-1 sm:flex-none px-3 sm:px-5 py-2.5 sm:py-3 bg-slate-900/60 border border-slate-700 rounded-xl flex items-center justify-between sm:justify-start gap-2 sm:gap-3.5 shadow-md backdrop-blur-sm">
+              <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 flex-shrink-0" />
+              <div className="text-left min-w-0">
+                <span className="block text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-widest font-black truncate">{gameMode} Score</span>
+                <span className="text-sm sm:text-base font-black text-amber-400 truncate block">{currentModeScore} PTS</span>
+              </div>
+              <button onClick={handleResetCurrentMode} className="p-1.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 rounded-lg transition flex-shrink-0 ml-1" title={`Reset ${gameMode} mode`}>
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="flex-1 sm:flex-none px-3 sm:px-5 py-2.5 sm:py-3 bg-slate-900/60 border border-slate-700 rounded-xl flex items-center justify-between sm:justify-start gap-2 sm:gap-3.5 shadow-md backdrop-blur-sm">
+              <Flame className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500 flex-shrink-0" />
+              <div className="text-left min-w-0">
+                <span className="block text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-widest font-black">Streak</span>
+                <span className="text-sm sm:text-base font-black text-orange-400 truncate block">{streaks}x</span>
+              </div>
+            </div>
+
+            {isTeamMode && (
+              <button onClick={() => setIsTeamProfileOpen(true)} className="flex-1 sm:flex-none px-3 sm:px-5 py-2.5 sm:py-3 bg-purple-600/80 hover:bg-purple-600 border border-purple-500/50 text-white text-[10px] sm:text-xs font-black rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg uppercase tracking-wider whitespace-nowrap">
+                <Users className="w-4 h-4 flex-shrink-0" /> Team Profile
+              </button>
+            )}
           </div>
-          <div className="px-5 py-3 bg-slate-900/60 border border-slate-700 rounded-xl flex items-center gap-3.5 shadow-md backdrop-blur-sm">
-            <Flame className="w-6 h-6 text-orange-500" />
-            <div className="text-left"><span className="block text-[10px] text-slate-400 uppercase tracking-widest font-black">Streak</span><span className="text-base font-black text-orange-400">{streaks}x</span></div>
-          </div>
-          <div className="flex bg-slate-900/60 border border-slate-700 rounded-xl p-1.5 shadow-md backdrop-blur-sm">
+
+          {/* Mode Selector: Full width grid on mobile */}
+          <div className="flex bg-slate-900/60 border border-slate-700 rounded-xl p-1.5 shadow-md backdrop-blur-sm w-full">
             {['Beginner', 'Intermediate', 'Master', 'God', 'Go'].map(mode => {
               const locked = isModeLocked(mode);
               return (
-                <button key={mode} onClick={() => !locked && setGameMode(mode)} disabled={locked} className={`px-3 py-2 text-[10px] md:text-xs rounded-lg font-black transition-all uppercase tracking-wider flex items-center gap-1 ${gameMode === mode ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-lg' : locked ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:text-slate-200'}`} title={locked ? `Requires ${mode === 'Intermediate' ? 1000 : mode === 'Master' ? 1600 : mode === 'God' ? 2600 : 3000} PTS in previous mode` : `Resume ${mode}`}>
-                  {locked && <Lock className="w-3 h-3" />} {mode}
+                <button key={mode} onClick={() => !locked && setGameMode(mode)} disabled={locked} className={`flex-1 px-1 sm:px-3 py-2 text-[9px] sm:text-[10px] md:text-xs rounded-lg font-black transition-all uppercase tracking-wider flex items-center justify-center gap-1 ${gameMode === mode ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-lg' : locked ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:text-slate-200'}`} title={locked ? `Requires ${mode === 'Intermediate' ? 1000 : mode === 'Master' ? 1600 : mode === 'God' ? 2600 : 3000} PTS in previous mode` : `Resume ${mode}`}>
+                  {locked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex-shrink-0" />} <span className="truncate hidden xs:inline sm:inline">{mode}</span><span className="truncate xs:hidden sm:hidden inline">{mode.substring(0,3)}</span>
                 </button>
               );
             })}
           </div>
-          {isTeamMode && (
-            <button onClick={() => setIsTeamProfileOpen(true)} className="px-5 py-3 bg-purple-600/80 hover:bg-purple-600 border border-purple-500/50 text-white text-xs font-black rounded-xl flex items-center gap-2.5 transition-all shadow-lg uppercase tracking-wider">
-              <Users className="w-4 h-4" /> Team Profile
-            </button>
-          )}
         </div>
       </div>
 
       {/* MAIN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2 flex flex-col">
-          <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-7 md:p-9 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl space-y-7 relative">
+          <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-5 md:p-9 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl space-y-6 md:space-y-7 relative">
             <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
             
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-5 border-b border-slate-800 pb-6">
-              <div>
-                <div className="flex items-center gap-3.5 flex-wrap">
-                  <span className="px-3 py-1 bg-amber-950/80 text-amber-300 border border-amber-500/40 text-xs font-mono font-black rounded-lg uppercase backdrop-blur-sm">{activeTopic}</span>
-                  <h2 className="text-2xl font-black text-white tracking-tight">{activeContent.title}</h2>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 sm:gap-5 border-b border-slate-800 pb-5 sm:pb-6">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 sm:gap-3.5 flex-wrap">
+                  <span className="px-2.5 sm:px-3 py-1 bg-amber-950/80 text-amber-300 border border-amber-500/40 text-[10px] sm:text-xs font-mono font-black rounded-lg uppercase backdrop-blur-sm whitespace-nowrap">{activeTopic}</span>
+                  <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight break-words">{activeContent.title}</h2>
                 </div>
-                <p className="text-xs font-bold text-slate-400 mt-2">Perfect Score: {PERFECT_GAME_SCORE} PTS | Current Run: <span className="text-amber-400 font-extrabold">{topicScores[activeTopic] || 0} PTS</span></p>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-2">Perfect Score: {PERFECT_GAME_SCORE} PTS | Current Run: <span className="text-amber-400 font-extrabold">{topicScores[activeTopic] || 0} PTS</span></p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button onClick={() => { if (hintsUsed < maxHints) { setHintsUsed(p => p + 1); setShowHint(true); } }} disabled={hintsUsed >= maxHints || !activeContent.hint} className="px-4 py-2.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-xs font-black rounded-xl flex items-center gap-2 transition-all shadow-md uppercase tracking-wider disabled:opacity-40 backdrop-blur-sm">
-                  <Lightbulb className="w-4 h-4" /> Hint ({hintsUsed}/{maxHints})
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                <button onClick={() => { if (hintsUsed < maxHints) { setHintsUsed(p => p + 1); setShowHint(true); } }} disabled={hintsUsed >= maxHints || !activeContent.hint} className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-[10px] sm:text-xs font-black rounded-xl flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-md uppercase tracking-wider disabled:opacity-40 backdrop-blur-sm whitespace-nowrap">
+                  <Lightbulb className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" /> Hint ({hintsUsed}/{maxHints})
                 </button>
-                <button onClick={handleSkipGame} disabled={skipsUsed >= maxSkips || gameMode === 'Go'} className="px-4 py-2.5 bg-slate-900/60 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-black rounded-xl flex items-center gap-2 transition-all shadow-md uppercase tracking-wider disabled:opacity-40 backdrop-blur-sm">
-                  <FastForward className="w-4 h-4" /> Skip ({skipsUsed}/{maxSkips})
+                <button onClick={handleSkipGame} disabled={skipsUsed >= maxSkips || gameMode === 'Go'} className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-slate-900/60 hover:bg-slate-800 border border-slate-700 text-slate-200 text-[10px] sm:text-xs font-black rounded-xl flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-md uppercase tracking-wider disabled:opacity-40 backdrop-blur-sm whitespace-nowrap">
+                  <FastForward className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" /> Skip ({skipsUsed}/{maxSkips})
                 </button>
-                <button onClick={handleResetActiveGame} className="px-4 py-2.5 bg-slate-900/60 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-black rounded-xl flex items-center gap-2 transition-all shadow-md uppercase tracking-wider backdrop-blur-sm"><RotateCcw className="w-4 h-4" /> Reset</button>
-                <button onClick={() => setIsShareModalOpen(true)} className="px-4 py-2.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-xs font-black rounded-xl flex items-center gap-2 transition-all shadow-md uppercase tracking-wider backdrop-blur-sm"><Share2 className="w-4 h-4" /> Share</button>
+                <button onClick={handleResetActiveGame} className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-slate-900/60 hover:bg-slate-800 border border-slate-700 text-slate-200 text-[10px] sm:text-xs font-black rounded-xl flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-md uppercase tracking-wider backdrop-blur-sm whitespace-nowrap">
+                  <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" /> Reset
+                </button>
+                <button onClick={() => setIsShareModalOpen(true)} className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-[10px] sm:text-xs font-black rounded-xl flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-md uppercase tracking-wider backdrop-blur-sm whitespace-nowrap">
+                  <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" /> Share
+                </button>
               </div>
             </div>
 
             {showHint && activeContent.hint && (
-              <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-5 text-sm font-semibold text-amber-300 space-y-1.5 shadow-[0_0_15px_rgba(245,158,11,0.1)] backdrop-blur-sm">
-                <p className="font-black text-amber-400 flex items-center gap-2 text-base"><Lightbulb className="w-5 h-5" /> Tactical Hint:</p>
-                <p>{activeContent.hint}</p>
+              <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-4 sm:p-5 text-sm font-semibold text-amber-300 space-y-1.5 shadow-[0_0_15px_rgba(245,158,11,0.1)] backdrop-blur-sm">
+                <p className="font-black text-amber-400 flex items-center gap-2 text-sm sm:text-base"><Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" /> Tactical Hint:</p>
+                <p className="break-words">{activeContent.hint}</p>
               </div>
             )}
 
             {gameMode !== 'Master' && gameMode !== 'God' && (
-              <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-5 text-sm font-semibold text-slate-300 space-y-1.5 shadow-inner backdrop-blur-sm">
-                <p className="font-black text-amber-400 flex items-center gap-2 text-base"><HelpCircle className="w-5 h-5" /> Health Bar Scoring Active:</p>
-                <p>• You start with 115 potential points. Each wrong attempt deducts points.</p>
-                {gameMode === 'Go' && <p className="text-amber-400">• Go Mode: Manual selection only.</p>}
+              <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 sm:p-5 text-sm font-semibold text-slate-300 space-y-1.5 shadow-inner backdrop-blur-sm">
+                <p className="font-black text-amber-400 flex items-center gap-2 text-sm sm:text-base"><HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" /> Health Bar Scoring Active:</p>
+                <p className="break-words">• You start with 115 potential points. Each wrong attempt deducts points.</p>
+                {gameMode === 'Go' && <p className="text-amber-400 break-words">• Go Mode: Manual selection only.</p>}
               </div>
             )}
             {(gameMode === 'Master' || gameMode === 'God') && (
-              <div className="bg-rose-950/20 border border-rose-500/40 rounded-xl p-5 text-sm font-black text-rose-300 flex items-center gap-3 shadow-inner backdrop-blur-sm">
-                <ShieldAlert className="w-5 h-5 text-rose-400" /> {gameMode} Mode: No hints, no skips. {gameMode === 'God' && 'Random auto-advance until all 26 cleared.'}
+              <div className="bg-rose-950/20 border border-rose-500/40 rounded-xl p-4 sm:p-5 text-sm font-black text-rose-300 flex items-start sm:items-center gap-3 shadow-inner backdrop-blur-sm">
+                <ShieldAlert className="w-4 h-4 sm:w-5 sm:h-5 text-rose-400 flex-shrink-0 mt-0.5 sm:mt-0" /> <span className="break-words">{gameMode} Mode: No hints, no skips. {gameMode === 'God' && 'Random auto-advance until all 26 cleared.'}</span>
               </div>
             )}
 
@@ -1269,20 +1284,20 @@ export default function Minigames() {
 
         {/* CHAT WORKSPACE — Frosted Glass */}
         <div className="flex flex-col">
-          <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-6 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl flex flex-col h-[650px] relative">
+          <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-4 sm:p-6 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl flex flex-col h-[550px] sm:h-[650px] relative">
             <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
             
-            <div className="flex border-b border-slate-800 pb-4 gap-3">
+            <div className="flex border-b border-slate-800 pb-3 sm:pb-4 gap-2 sm:gap-3">
               {chatTabs.map(target => (
-                <button key={target} onClick={() => setChatTarget(target)} className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider rounded-lg border transition-all shadow-md backdrop-blur-sm ${chatTarget === target ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-amber-500/20' : 'bg-slate-900/60 border-slate-700 text-slate-400 hover:text-white'}`}>
+                <button key={target} onClick={() => setChatTarget(target)} className={`flex-1 py-2 sm:py-2.5 text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-lg border transition-all shadow-md backdrop-blur-sm truncate ${chatTarget === target ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-amber-500/20' : 'bg-slate-900/60 border-slate-700 text-slate-400 hover:text-white'}`}>
                   {target === 'Role Chat' ? `${COLOR_LABEL(myColor)} Squad` : target}
                 </button>
               ))}
             </div>
 
-            <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto py-4 space-y-4 pr-1 custom-scrollbar relative">
+            <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto py-3 sm:py-4 space-y-3 sm:space-y-4 pr-1 custom-scrollbar relative min-h-0">
               {chatTarget === 'Role Chat' && (
-                <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-center text-purple-300 bg-purple-500/10 border border-purple-500/30 rounded-lg py-1.5 backdrop-blur-sm">
+                <div className="mb-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-center text-purple-300 bg-purple-500/10 border border-purple-500/30 rounded-lg py-1.5 backdrop-blur-sm truncate px-2">
                   Chatting with your {COLOR_LABEL(myColor)} Squad only
                 </div>
               )}
@@ -1290,17 +1305,17 @@ export default function Minigames() {
                 <div className="text-center text-slate-500 text-xs py-8">No messages yet. Start the conversation!</div>
               )}
               {displayMessages.map(msg => (
-                <div key={msg.id} className={`p-4 rounded-xl max-w-[92%] text-sm space-y-2 relative group shadow-md backdrop-blur-sm ${msg.sender === currentUsername ? 'ml-auto bg-amber-500/20 border border-amber-500/40 text-amber-100 font-bold' : 'bg-slate-900/60 border border-slate-700 text-slate-200 font-bold'}`}>
-                  <div className="flex justify-between items-center text-xs text-slate-400">
-                    <span className="font-black uppercase tracking-wide text-amber-400">{msg.avatar} {msg.sender}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono">{msg.time}</span>
+                <div key={msg.id} className={`p-3 sm:p-4 rounded-xl max-w-[92%] text-sm space-y-2 relative group shadow-md backdrop-blur-sm ${msg.sender === currentUsername ? 'ml-auto bg-amber-500/20 border border-amber-500/40 text-amber-100 font-bold' : 'bg-slate-900/60 border border-slate-700 text-slate-200 font-bold'}`}>
+                  <div className="flex justify-between items-center text-[10px] sm:text-xs text-slate-400 gap-2">
+                    <span className="font-black uppercase tracking-wide text-amber-400 truncate min-w-0">{msg.avatar} {msg.sender}</span>
+                    <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                      <span className="font-mono whitespace-nowrap">{msg.time}</span>
                       {msg.sender === currentUsername && (
-                        <button onClick={() => handleDeleteChatMessage(msg.id)} className="text-rose-400 hover:text-rose-300 transition-all p-1 bg-rose-950/40 rounded-lg border border-rose-500/30"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeleteChatMessage(msg.id)} className="text-rose-400 hover:text-rose-300 transition-all p-1 bg-rose-950/40 rounded-lg border border-rose-500/30 flex-shrink-0"><Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></button>
                       )}
                     </div>
                   </div>
-                  {msg.text && <p className="leading-relaxed text-base font-semibold">{msg.text}</p>}
+                  {msg.text && <p className="leading-relaxed text-sm sm:text-base font-semibold break-words">{msg.text}</p>}
                   {msg.audioUrl && <AudioPlayer src={msg.audioUrl} initialDuration={msg.duration || 0} theme={getAudioTheme(msg)} />}
                 </div>
               ))}
@@ -1311,23 +1326,23 @@ export default function Minigames() {
             {hasNewMessages && !isNearBottom && (
               <button
                 onClick={jumpToBottom}
-                className="absolute bottom-28 left-1/2 -translate-x-1/2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-2 shadow-lg shadow-amber-500/40 z-10 transition animate-bounce"
+                className="absolute bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-2 shadow-lg shadow-amber-500/40 z-10 transition animate-bounce"
               >
                 <ArrowDown className="w-3.5 h-3.5" />
                 <span>New Messages</span>
               </button>
             )}
 
-            <div className="space-y-3 pt-4 border-t border-slate-800 mt-2">
+            <div className="space-y-3 pt-3 sm:pt-4 border-t border-slate-800 mt-2">
               {/* LIVE RECORDING INDICATOR — timer only, no transcription */}
               {isRecording && (
                 <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-3 backdrop-blur-sm">
                   <div className="flex items-center justify-between text-xs font-mono text-red-300">
-                    <div className="flex items-center space-x-2">
-                      <span className="w-3 h-3 rounded-full bg-red-500 animate-ping"></span>
-                      <span className="font-extrabold">● REC {formatTime(recordingTime)}</span>
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <span className="w-3 h-3 rounded-full bg-red-500 animate-ping flex-shrink-0"></span>
+                      <span className="font-extrabold truncate">● REC {formatTime(recordingTime)}</span>
                     </div>
-                    <span className="text-[10px] text-red-400 italic">Tap mic again to stop</span>
+                    <span className="text-[10px] text-red-400 italic flex-shrink-0 ml-2">Tap mic again to stop</span>
                   </div>
                 </div>
               )}
@@ -1336,24 +1351,24 @@ export default function Minigames() {
               {micError && (
                 <div className="bg-rose-500/15 border border-rose-500/40 rounded-xl p-2.5 text-[11px] font-mono text-rose-300 flex items-center space-x-2 backdrop-blur-sm">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className="flex-1">{micError}</span>
-                  <button onClick={() => setMicError('')} className="text-rose-400 hover:text-white"><X className="w-3 h-3" /></button>
+                  <span className="flex-1 break-words">{micError}</span>
+                  <button onClick={() => setMicError('')} className="text-rose-400 hover:text-white flex-shrink-0"><X className="w-3 h-3" /></button>
                 </div>
               )}
 
               {/* PENDING RECORDING PREVIEW */}
               {pendingRecording && (
                 <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 space-y-2 backdrop-blur-sm">
-                  <div className="flex justify-between items-center text-[10px] font-mono text-amber-300 font-extrabold uppercase tracking-wider">
-                    <span>🎙️ Voice Ready — {pendingRecording.target === 'Role Chat' ? `${COLOR_LABEL(myColor)} Squad` : pendingRecording.target}</span>
-                    <span className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full">{formatTime(pendingRecording.duration)}</span>
+                  <div className="flex justify-between items-center text-[10px] font-mono text-amber-300 font-extrabold uppercase tracking-wider gap-2">
+                    <span className="truncate min-w-0">🎙️ Voice Ready — {pendingRecording.target === 'Role Chat' ? `${COLOR_LABEL(myColor)} Squad` : pendingRecording.target}</span>
+                    <span className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full flex-shrink-0 whitespace-nowrap">{formatTime(pendingRecording.duration)}</span>
                   </div>
                   <AudioPlayer src={pendingRecording.blobUrl} initialDuration={pendingRecording.duration} theme={pendingRecording.target === 'Aura-1 AI' ? 'amber' : pendingRecording.target === 'Team Chat' ? 'purple' : SQUAD_THEME[myColor] || 'amber'} />
                   <div className="flex gap-2 pt-1">
                     <button onClick={handleSendPendingRecording} className="flex-1 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition shadow-md shadow-amber-500/20">
                       <Send className="w-3 h-3" /> Send
                     </button>
-                    <button onClick={handleDiscardRecording} className="px-4 py-2 bg-slate-900/60 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 backdrop-blur-sm">
+                    <button onClick={handleDiscardRecording} className="px-4 py-2 bg-slate-900/60 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 backdrop-blur-sm flex-shrink-0">
                       <X className="w-3 h-3" /> Cancel
                     </button>
                   </div>
@@ -1361,13 +1376,13 @@ export default function Minigames() {
               )}
 
               <form onSubmit={handleSendText} className="flex items-center gap-2">
-                <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder={isRecording ? 'Live recording...' : chatTarget === 'Aura-1 AI' ? 'Ask Aura-1 AI...' : chatTarget === 'Role Chat' ? `Message ${COLOR_LABEL(myColor)} Squad...` : 'Message team...'} className="flex-1 bg-slate-950/60 border border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-amber-500/50 placeholder-slate-500 backdrop-blur-sm" />
+                <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder={isRecording ? 'Live recording...' : chatTarget === 'Aura-1 AI' ? 'Ask Aura-1 AI...' : chatTarget === 'Role Chat' ? `Message ${COLOR_LABEL(myColor)} Squad...` : 'Message team...'} className="flex-1 min-w-0 bg-slate-950/60 border border-slate-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-white focus:outline-none focus:border-amber-500/50 placeholder-slate-500 backdrop-blur-sm" />
                 <button 
                   type="button" 
                   onClick={toggleRecording} 
                   disabled={micButtonDisabled} 
                   title={micButtonTitle}
-                  className={`p-3 rounded-xl border transition flex-shrink-0 ${
+                  className={`p-2.5 sm:p-3 rounded-xl border transition flex-shrink-0 ${
                     isRecording
                       ? 'bg-red-600 border-red-500 text-white animate-pulse shadow-md shadow-red-500/30'
                       : micButtonDisabled
@@ -1383,10 +1398,10 @@ export default function Minigames() {
                     <Mic className="w-4 h-4" />
                   )}
                 </button>
-                <button type="submit" disabled={!chatInput.trim() || isRecording} className="p-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex-shrink-0 disabled:opacity-50">
+                <button type="submit" disabled={!chatInput.trim() || isRecording} className="p-2.5 sm:p-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex-shrink-0 disabled:opacity-50 flex items-center justify-center">
                   <Send className="w-4 h-4" />
                 </button>
-                <button type="button" onClick={handleClearAllChat} className="p-3 bg-slate-900/60 hover:bg-rose-900/50 border border-slate-700 hover:border-rose-500/50 text-slate-400 hover:text-rose-400 rounded-xl transition-all shadow-md backdrop-blur-sm flex-shrink-0">
+                <button type="button" onClick={handleClearAllChat} className="p-2.5 sm:p-3 bg-slate-900/60 hover:bg-rose-900/50 border border-slate-700 hover:border-rose-500/50 text-slate-400 hover:text-rose-400 rounded-xl transition-all shadow-md backdrop-blur-sm flex-shrink-0 flex items-center justify-center">
                   <Eraser className="w-4 h-4" />
                 </button>
               </form>
@@ -1396,22 +1411,22 @@ export default function Minigames() {
       </div>
 
       {/* COMPUTING SUITE MENU — Frosted Glass */}
-      <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-6 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl space-y-5 relative">
+      <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-5 md:p-6 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl space-y-5 relative">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
-        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="w-full flex justify-between items-center text-base font-black text-white border-b border-slate-800 pb-4 uppercase tracking-wider">
-          <span className="flex items-center gap-3"><Zap className="w-6 h-6 text-amber-400" /> Computing Suite Menu (26 Topics)</span>
-          {isMenuOpen ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
+        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="w-full flex justify-between items-center text-sm sm:text-base font-black text-white border-b border-slate-800 pb-4 uppercase tracking-wider gap-3">
+          <span className="flex items-center gap-2 sm:gap-3 min-w-0"><Zap className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 flex-shrink-0" /> <span className="truncate">Computing Suite Menu (26 Topics)</span></span>
+          {isMenuOpen ? <ChevronUp className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" /> : <ChevronDown className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />}
         </button>
         {isMenuOpen && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 pt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5 pt-3">
             {Object.entries(MINIGAMES_CONTENT).map(([key, item]) => {
               const score = topicScores[key] || 0;
               const isActive = activeTopic === key;
               const isCompleted = completedGames.includes(key);
               return (
-                <button key={key} onClick={() => gameMode === 'Go' && !isCompleted ? setActiveTopic(key) : null} disabled={gameMode !== 'Go' && !isCompleted} className={`p-5 rounded-xl border text-left flex flex-col justify-between space-y-3.5 transition-all shadow-md backdrop-blur-sm ${isActive ? 'bg-amber-950/70 border-amber-500/50 text-amber-100 shadow-amber-500/20' : isCompleted ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-100' : 'bg-slate-950/60 border-slate-700 text-slate-300 hover:border-slate-600 opacity-80'}`}>
-                  <div><span className="text-xs font-mono font-black text-amber-400 uppercase tracking-widest">{key}</span><h4 className="text-sm font-black text-white line-clamp-1 mt-1.5">{item.title}</h4></div>
-                  <div className="flex justify-between items-center text-xs font-bold text-slate-400 border-t border-slate-700/80 pt-3"><span className="uppercase tracking-wide">{item.type}</span><span className={`font-black ${isCompleted ? 'text-emerald-400' : 'text-amber-400'}`}>{score} / 115 PTS</span></div>
+                <button key={key} onClick={() => gameMode === 'Go' && !isCompleted ? setActiveTopic(key) : null} disabled={gameMode !== 'Go' && !isCompleted} className={`p-4 sm:p-5 rounded-xl border text-left flex flex-col justify-between space-y-3.5 transition-all shadow-md backdrop-blur-sm ${isActive ? 'bg-amber-950/70 border-amber-500/50 text-amber-100 shadow-amber-500/20' : isCompleted ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-100' : 'bg-slate-950/60 border-slate-700 text-slate-300 hover:border-slate-600 opacity-80'}`}>
+                  <div className="min-w-0"><span className="text-[10px] sm:text-xs font-mono font-black text-amber-400 uppercase tracking-widest break-words">{key}</span><h4 className="text-sm font-black text-white line-clamp-1 mt-1.5 break-words">{item.title}</h4></div>
+                  <div className="flex justify-between items-center text-[10px] sm:text-xs font-bold text-slate-400 border-t border-slate-700/80 pt-3 gap-2"><span className="uppercase tracking-wide truncate">{item.type}</span><span className={`font-black whitespace-nowrap ${isCompleted ? 'text-emerald-400' : 'text-amber-400'}`}>{score} / 115 PTS</span></div>
                 </button>
               );
             })}
@@ -1419,52 +1434,67 @@ export default function Minigames() {
         )}
       </div>
 
-      {/* TEAM PROFILE MODAL — Frosted Glass */}
+      {/* TEAM PROFILE MODAL — Frosted Glass (Mobile Fixed: Stacked Layout) */}
       {isTeamProfileOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-7 md:p-9 max-w-2xl w-full space-y-7 shadow-2xl shadow-purple-500/20 backdrop-blur-2xl">
-            <div className="flex justify-between items-center border-b border-slate-700 pb-5">
-              <h3 className="text-xl font-black text-white flex items-center gap-3"><Users className="w-6 h-6 text-purple-400" /> Squad & Team Profile</h3>
-              <button onClick={() => setIsTeamProfileOpen(false)} className="text-slate-400 hover:text-white text-lg font-black">✕</button>
+          <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-5 md:p-9 max-w-2xl w-full space-y-6 shadow-2xl shadow-purple-500/20 backdrop-blur-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden relative">
+            
+            {/* Sticky Header */}
+            <div className="flex justify-between items-center border-b border-slate-700 pb-4 sticky top-0 bg-slate-900/95 backdrop-blur-md z-10 -mx-5 px-5 md:-mx-9 md:px-9 pt-1">
+              <h3 className="text-lg md:text-xl font-black text-white flex items-center gap-3 min-w-0">
+                <Users className="w-5 h-5 md:w-6 md:h-6 text-purple-400 flex-shrink-0" /> 
+                <span className="truncate">Squad & Team Profile</span>
+              </h3>
+              <button onClick={() => setIsTeamProfileOpen(false)} className="text-slate-400 hover:text-white text-xl font-black flex-shrink-0 p-1">✕</button>
             </div>
+
             <div className="space-y-5">
-              <div><label className="block text-xs text-slate-400 font-black uppercase tracking-widest mb-2">Custom Team Name</label><input type="text" value={squadName} onChange={(e) => setSquadName(e.target.value)} className="w-full bg-slate-950/60 border border-slate-700 rounded-xl px-5 py-4 text-base font-black text-white focus:outline-none focus:border-purple-500/50 shadow-inner backdrop-blur-sm" /></div>
+              <div>
+                <label className="block text-xs text-slate-400 font-black uppercase tracking-widest mb-2">Custom Team Name</label>
+                <input type="text" value={squadName} onChange={(e) => setSquadName(e.target.value)} className="w-full bg-slate-950/60 border border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-purple-500/50 shadow-inner backdrop-blur-sm" />
+              </div>
               <div className="space-y-3">
                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Roster & Live Scores (Sorted by Score)</h4>
-                <div className="max-h-80 overflow-y-auto space-y-2.5 pr-1 custom-scrollbar">
+                <div className="max-h-64 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
                   {sortedRoster.length === 0 ? (
                     <p className="text-center text-slate-500 text-sm py-8">No team members yet. Invite friends from the Friends Hub!</p>
                   ) : (
                     sortedRoster.map((m, idx) => {
                       const isMe = m.id === user?.id;
                       return (
-                        <div key={m.id} className="flex items-center justify-between p-4 bg-slate-900/60 border border-slate-700 rounded-xl text-xs font-bold shadow-md backdrop-blur-sm">
-                          <div className="flex items-center gap-4">
-                            <span className="font-mono text-slate-500 text-sm">#{idx + 1}</span>
-                            <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center text-xl border border-slate-700">{m.avatar || '👤'}</div>
-                            <div>
-                              <span className="text-white text-sm font-black flex items-center gap-2">
-                                {m.username}
-                                {m.isLeader && <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40">LEADER</span>}
-                                {isMe && <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40">YOU</span>}
-                              </span>
-                              <span className="block text-xs text-purple-300 font-extrabold mt-0.5">{m.role} • {COLOR_LABEL(m.team)} Squad</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-black text-amber-400 font-mono">{m.score || 0} PTS</span>
-                            {isMe && (
-                              <div className="flex items-center gap-1">
-                                <select value={m.role} onChange={(e) => handleSelectMyRole(e.target.value)} className="bg-slate-950 border border-slate-700 text-white text-[10px] font-black rounded-lg px-1.5 py-1.5 focus:outline-none focus:border-purple-500/50 backdrop-blur-sm">
-                                  {SELF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
-                                <select value={m.team} onChange={(e) => handleSelectMyColor(e.target.value)} className="bg-slate-950 border border-slate-700 text-white text-[10px] font-black rounded-lg px-1.5 py-1.5 focus:outline-none focus:border-purple-500/50 backdrop-blur-sm">
-                                  {SELF_COLORS.map(c => <option key={c} value={c}>{COLOR_LABEL(c)}</option>)}
-                                </select>
-                                <button onClick={handleLeaveTeam} className="p-1.5 bg-slate-800 hover:bg-rose-500/20 border border-slate-600 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded-lg transition"><LogOut className="w-3.5 h-3.5" /></button>
+                        <div key={m.id} className="flex flex-col gap-4 p-4 bg-slate-900/60 border border-slate-700 rounded-xl text-xs font-bold shadow-md backdrop-blur-sm">
+                          
+                          {/* Top Row: Avatar, Name, Score */}
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <span className="font-mono text-slate-500 text-sm flex-shrink-0 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center text-xl border border-slate-700 flex-shrink-0">{m.avatar || '👤'}</div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-white text-sm font-black truncate">{m.username}</span>
+                                  {m.isLeader && <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40 flex-shrink-0 font-bold">LEADER</span>}
+                                  {isMe && <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40 flex-shrink-0 font-bold">YOU</span>}
+                                </div>
+                                <span className="block text-xs text-purple-300 font-extrabold mt-0.5 truncate">{m.role} • {COLOR_LABEL(m.team)} Squad</span>
                               </div>
-                            )}
+                            </div>
+                            <span className="text-sm font-black text-amber-400 font-mono whitespace-nowrap flex-shrink-0">{m.score || 0} PTS</span>
                           </div>
+                          
+                          {/* Bottom Row: Controls (Stacked neatly below on mobile) */}
+                          {isMe && (
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full pl-7">
+                              <select value={m.role} onChange={(e) => handleSelectMyRole(e.target.value)} className="w-full sm:w-auto flex-1 bg-slate-950 border border-slate-700 text-white text-[11px] font-black rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500/50 backdrop-blur-sm appearance-none">
+                                {SELF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                              </select>
+                              <select value={m.team} onChange={(e) => handleSelectMyColor(e.target.value)} className="w-full sm:w-auto flex-1 bg-slate-950 border border-slate-700 text-white text-[11px] font-black rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500/50 backdrop-blur-sm appearance-none">
+                                {SELF_COLORS.map(c => <option key={c} value={c}>{COLOR_LABEL(c)}</option>)}
+                              </select>
+                              <button onClick={handleLeaveTeam} className="w-full sm:w-auto py-2 px-4 bg-slate-800 hover:bg-rose-500/20 border border-slate-600 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5 flex-shrink-0">
+                                <LogOut className="w-3.5 h-3.5" /> Leave
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })
@@ -1472,11 +1502,13 @@ export default function Minigames() {
                 </div>
               </div>
             </div>
-            <div className="pt-5 border-t border-slate-700 flex gap-4">
-              <button onClick={() => { try { sounds?.playClick?.(); } catch {} setIsTeamProfileOpen(false); if (setActiveTab) setActiveTab('friends'); }} className="flex-1 py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-mono font-extrabold flex items-center justify-center space-x-2 transition shadow-lg shadow-purple-600/30">
+
+            {/* Sticky Footer */}
+            <div className="pt-4 border-t border-slate-700 flex flex-col sm:flex-row gap-3 sticky bottom-0 bg-slate-900/95 backdrop-blur-md -mx-5 px-5 md:-mx-9 md:px-9 pb-1">
+              <button onClick={() => { try { sounds?.playClick?.(); } catch {} setIsTeamProfileOpen(false); if (setActiveTab) setActiveTab('friends'); }} className="flex-1 py-3 px-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-mono font-extrabold flex items-center justify-center space-x-2 transition shadow-lg shadow-purple-600/30">
                 <UserPlus className="w-4 h-4" /><span>Invite Friends</span>
               </button>
-              <button onClick={() => setIsTeamProfileOpen(false)} className="px-7 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-black text-xs rounded-xl transition-all uppercase tracking-wider">Save & Close</button>
+              <button onClick={() => setIsTeamProfileOpen(false)} className="w-full sm:w-auto px-7 py-3 bg-slate-800 hover:bg-slate-700 text-white font-black text-xs rounded-xl transition-all uppercase tracking-wider">Save & Close</button>
             </div>
           </div>
         </div>
@@ -1485,23 +1517,31 @@ export default function Minigames() {
       {/* SHARE MODAL — Frosted Glass */}
       {isShareModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900/80 border border-amber-500/30 rounded-3xl p-7 md:p-9 max-w-md w-full space-y-7 shadow-2xl shadow-amber-500/20 backdrop-blur-2xl">
-            <div className="flex justify-between items-center border-b border-slate-700 pb-4"><h3 className="text-lg font-black text-white flex items-center gap-2.5"><Award className="w-6 h-6 text-amber-400" /> Share Score</h3><button onClick={() => setIsShareModalOpen(false)} className="text-slate-400 hover:text-white text-lg font-black">✕</button></div>
-            <div className="p-6 bg-slate-950/60 border border-slate-700 rounded-xl space-y-4 text-center shadow-inner backdrop-blur-sm">
-              <span className="text-xs text-amber-400 font-mono font-black uppercase tracking-widest">ByteForged Academy Certificate</span>
-              <h4 className="text-xl font-black text-white">{MINIGAMES_CONTENT[activeTopic].title}</h4>
-              <div className="text-4xl font-black text-amber-400">{topicScores[activeTopic] || 0} / 115 PTS</div>
-              <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Mode: {currentModeScore} PTS ({unlockedTitle})</p>
+          <div className="bg-slate-900/80 border border-amber-500/30 rounded-3xl p-5 md:p-9 max-w-md w-full space-y-6 shadow-2xl shadow-amber-500/20 backdrop-blur-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-700 pb-4 sticky top-0 bg-slate-900/95 backdrop-blur-md -mx-5 px-5 md:-mx-9 md:px-9 pt-1 z-10">
+              <h3 className="text-base md:text-lg font-black text-white flex items-center gap-2.5 min-w-0"><Award className="w-5 h-5 md:w-6 md:h-6 text-amber-400 flex-shrink-0" /> <span className="truncate">Share Score</span></h3>
+              <button onClick={() => setIsShareModalOpen(false)} className="text-slate-400 hover:text-white text-lg font-black flex-shrink-0 p-1">✕</button>
             </div>
-            <button onClick={() => { navigator.clipboard.writeText(`I scored ${topicScores[activeTopic] || 0}/115 on ${MINIGAMES_CONTENT[activeTopic].title} in ${gameMode} mode!`); alert('Copied!'); setIsShareModalOpen(false); }} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-base rounded-xl transition-all shadow-xl shadow-amber-500/30 flex items-center justify-center gap-3 uppercase tracking-wider"><Share2 className="w-5 h-5" /> Copy Credentials</button>
+            <div className="p-5 sm:p-6 bg-slate-950/60 border border-slate-700 rounded-xl space-y-4 text-center shadow-inner backdrop-blur-sm">
+              <span className="text-[10px] sm:text-xs text-amber-400 font-mono font-black uppercase tracking-widest block">ByteForged Academy Certificate</span>
+              <h4 className="text-lg sm:text-xl font-black text-white break-words">{MINIGAMES_CONTENT[activeTopic].title}</h4>
+              <div className="text-3xl sm:text-4xl font-black text-amber-400">{topicScores[activeTopic] || 0} / 115 PTS</div>
+              <p className="text-[10px] sm:text-xs font-extrabold text-slate-400 uppercase tracking-wider break-words">Mode: {currentModeScore} PTS ({unlockedTitle})</p>
+            </div>
+            <button onClick={() => { navigator.clipboard.writeText(`I scored ${topicScores[activeTopic] || 0}/115 on ${MINIGAMES_CONTENT[activeTopic].title} in ${gameMode} mode!`); alert('Copied!'); setIsShareModalOpen(false); }} className="w-full py-3 sm:py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-sm sm:text-base rounded-xl transition-all shadow-xl shadow-amber-500/30 flex items-center justify-center gap-2 sm:gap-3 uppercase tracking-wider px-4">
+              <Share2 className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" /> <span className="truncate">Copy Credentials</span>
+            </button>
           </div>
         </div>
       )}
 
       {/* BOTTOM HUD — Frosted Glass */}
-      <div className="bg-slate-900/40 border border-amber-500/20 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-black text-slate-300 shadow-xl uppercase tracking-wider backdrop-blur-2xl">
-        <span>Active Topic: <strong className="text-white">{MINIGAMES_CONTENT[activeTopic].title}</strong></span>
-        <div className="flex items-center gap-6"><span>Global: <strong className="text-amber-400 text-sm">{currentModeScore} PTS</strong></span><button onClick={handleResetAllProgress} className="text-rose-400 hover:text-rose-300 underline transition-all font-black">Reset All Arcade Data</button></div>
+      <div className="bg-slate-900/40 border border-amber-500/20 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-[10px] sm:text-xs font-black text-slate-300 shadow-xl uppercase tracking-wider backdrop-blur-2xl text-center sm:text-left">
+        <span className="truncate w-full sm:w-auto">Active Topic: <strong className="text-white break-words">{MINIGAMES_CONTENT[activeTopic].title}</strong></span>
+        <div className="flex items-center justify-center sm:justify-end gap-4 sm:gap-6 w-full sm:w-auto flex-shrink-0">
+          <span className="whitespace-nowrap">Global: <strong className="text-amber-400 text-xs sm:text-sm">{currentModeScore} PTS</strong></span>
+          <button onClick={handleResetAllProgress} className="text-rose-400 hover:text-rose-300 underline transition-all font-black whitespace-nowrap">Reset All</button>
+        </div>
       </div>
     </div>
   );
