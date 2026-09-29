@@ -1,8 +1,8 @@
-// src/lib/aura.js (Aura-1 AI Engine — Grok backend, Puter for voice)
+// src/lib/aura.js (Aura-1 AI Engine — Puter Grok 4.7 with Speech-to-Text)
 
 /**
  * Loads Puter.js CDN dynamically if window.puter is not already present
- * (Used ONLY for audio transcription and TTS — NOT for chat anymore)
+ * Users sign in via Puter popup — they pay for their own AI usage
  */
 function loadPuterScript() {
   return new Promise((resolve, reject) => {
@@ -28,7 +28,6 @@ function loadPuterScript() {
 
 /**
  * Transcribes audio files (voice notes / mic recordings) using Puter AI
- * (Still on Puter — Grok doesn't do speech-to-text)
  * @param {Blob|File} audioFile - Audio blob or file
  * @returns {Promise<string>} Transcribed text string
  */
@@ -46,66 +45,46 @@ export async function transcribeAudio(audioFile) {
 }
 
 /**
- * Sends text prompts or audio inputs to Aura-1 via X.AI Grok API
- * (Grok handles reasoning, Puter still handles audio transcription)
+ * Sends text prompts or audio inputs to Aura-1 via Puter Grok 4.7
+ * Users pay for their own AI usage through their Puter account
  * @param {string|File|Blob} userPrompt - User input text, speech transcript, or audio File/Blob
  * @param {string} contextPrompt - Current note card or quiz card context
- * @param {string} botName - Custom bot handle (display name only)
+ * @param {string} botName - Custom bot handle
  * @returns {Promise<string>} AI evaluation response
  */
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
-  // ⚠️ API key check — helpful error if not configured
-  const apiKey = import.meta.env.VITE_XAI_API_KEY;
-  if (!apiKey) {
-    console.error("Missing VITE_XAI_API_KEY in .env file");
-    return `[${botName} Alert]: API key not configured. Add VITE_XAI_API_KEY to your .env file.`;
-  }
-
   try {
+    const puter = await loadPuterScript();
     let finalInputText = userPrompt;
 
-    // Handle audio input directly if userPrompt is a Blob or File (still uses Puter)
+    // Handle audio input directly if userPrompt is a Blob or File
     if (userPrompt instanceof Blob || userPrompt instanceof File) {
       finalInputText = await transcribeAudio(userPrompt);
     }
 
     const systemInstruction = `You are ${botName}, an expert, witty, and direct CS & ICT AI evaluator for ByteForged Academy. Grade or answer the user's input accurately and concisely (under 100 words). Be encouraging but honest.`;
-    
-    // Call X.AI Grok API (OpenAI-compatible endpoint)
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "grok-beta", // Free tier model — upgrade to "grok-4-fast" later if needed
-        messages: [
-          { role: "system", content: systemInstruction },
-          { role: "user", content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}` }
-        ],
-        temperature: 0.6,
-        max_tokens: 400
-      })
+    const fullPrompt = `${systemInstruction}\n\n[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}`;
+
+    // Query Aura-1 engine via Puter Grok 4.7
+    const response = await puter.ai.chat(fullPrompt, {
+      model: "x-ai/grok-4.7",
+      temperature: 0.6
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("Grok API Error:", response.status, errorData);
-      return `[${botName} Alert]: Evaluation engine temporarily unavailable (code: ${response.status}). Please try again in a moment.`;
+    if (typeof response === 'string') {
+      return response;
     }
-
-    const data = await response.json();
-    const aiText = data?.choices?.[0]?.message?.content;
-    
-    if (aiText && typeof aiText === 'string') {
-      return aiText.trim();
+    if (response?.message?.content) {
+      return response.message.content;
+    }
+    if (response?.text) {
+      return response.text;
     }
 
     return `[${botName}]: Evaluation processed successfully.`;
   } catch (error) {
-    console.error("Aura-1 Grok Error:", error);
-    return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet and try again.`;
+    console.error("Aura-1 API Error:", error);
+    return `[${botName} Alert]: Aura-1 engine connection error. Please try again.`;
   }
 }
 
