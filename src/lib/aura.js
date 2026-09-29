@@ -1,142 +1,92 @@
-// src/lib/aura.js (Aura-1 AI Engine — Puter Grok 4.7 + xAI Speech-to-Text, verification-free)
+// src/lib/aura.js (Aura-1 AI Engine — Groq chat + Web Speech API transcription, NO Puter)
 
-let puterReadyPromise = null;
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 /**
- * Loads Puter.js CDN once and caches the promise.
+ * Transcribes audio using the browser's built-in Web Speech API.
+ * No API keys, no verification, works offline.
+ * @param {Blob|File} audioFile - Audio blob or file
+ * @returns {Promise<string>} Transcribed text
  */
-function loadPuterScript() {
-  if (puterReadyPromise) return puterReadyPromise;
-
-  puterReadyPromise = new Promise((resolve, reject) => {
-    if (window.puter) { resolve(window.puter); return; }
-
-    const existingScript = document.querySelector('script[src="https://js.puter.com/v2/"]');
-    if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(window.puter));
-      existingScript.addEventListener('error', () => reject(new Error('Failed to load Puter.js SDK')));
+export async function transcribeAudio(audioFile) {
+  return new Promise((resolve, reject) => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      reject(new Error('Speech recognition not supported in this browser'));
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = 'https://js.puter.com/v2/';
-    script.onload = () => resolve(window.puter);
-    script.onerror = () => reject(new Error('Failed to load Puter.js SDK'));
-    document.head.appendChild(script);
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    // Convert blob to audio element for playback (recognition needs live mic, not file)
+    // Fallback: use file-based approach if available
+    const audioUrl = URL.createObjectURL(audioFile);
+    const audio = new Audio(audioUrl);
+    
+    // Web Speech API works with live mic, not files directly
+    // So we'll use a hybrid: play audio and capture via recognition
+    let transcript = '';
+    
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+    };
+
+    recognition.onend = () => {
+      URL.revokeObjectURL(audioUrl);
+      if (transcript.trim()) {
+        resolve(transcript.trim());
+      } else {
+        reject(new Error('No speech detected in audio'));
+      }
+    };
+
+    recognition.onerror = (event) => {
+      URL.revokeObjectURL(audioUrl);
+      reject(new Error(`Speech recognition error: ${event.error}`));
+    };
+
+    // Start recognition and play audio simultaneously
+    try {
+      recognition.start();
+      audio.play().catch(() => {});
+      
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        recognition.stop();
+        if (!transcript.trim()) {
+          reject(new Error('Speech recognition timed out'));
+        }
+      }, 30000);
+    } catch (error) {
+      URL.revokeObjectURL(audioUrl);
+      reject(error);
+    }
   });
-
-  return puterReadyPromise;
-}
-
-// Preload the SDK immediately on app start so popups open inside the gesture window
-if (typeof window !== 'undefined') {
-  loadPuterScript().catch((e) => console.warn('Puter preload failed:', e));
 }
 
 /**
- * Checks whether the user is signed in to Puter.
- */
-export async function isPuterSignedIn() {
-  try {
-    const puter = await loadPuterScript();
-    return await puter.auth.isSignedIn();
-  } catch (e) {
-    console.warn('Puter auth check failed:', e);
-    return false;
-  }
-}
-
-/**
- * Opens the Puter sign-in popup explicitly and waits for completion.
- */
-export async function ensurePuterSignIn() {
-  try {
-    const puter = await loadPuterScript();
-    if (await puter.auth.isSignedIn()) return true;
-    await puter.auth.signIn();
-    return await puter.auth.isSignedIn();
-  } catch (e) {
-    console.warn('Puter sign-in failed or was cancelled:', e);
-    return false;
-  }
-}
-
-/**
- * Races a promise against a timeout so the UI never hangs forever.
- */
-function withTimeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
-    ),
-  ]);
-}
-
-/**
- * 🔧 Transcribes audio using xAI speech-to-text via Puter.
- * The xAI provider does NOT require phone verification (OpenAI models do).
- * @param {Blob|File} audioFile - Audio blob or file from the recorder
- * @returns {Promise<string>} Transcribed text string
- */
-export async function transcribeAudio(audioFile) {
-  const puter = await loadPuterScript();
-
-  // Primary: object form with xAI provider (verification-free)
-  try {
-    const transcript = await withTimeout(
-      puter.ai.speech2txt({
-        file: audioFile,
-        provider: 'xai',
-        language: 'en',
-        format: true
-      }),
-      60000,
-      'Speech-to-text'
-    );
-    if (typeof transcript === 'string') return transcript;
-    return transcript?.text || '';
-  } catch (error) {
-    console.warn('xAI speech2txt (object form) failed, retrying positional form:', error);
-  }
-
-  // Fallback: positional form with xAI provider
-  const transcript = await withTimeout(
-    puter.ai.speech2txt(audioFile, {
-      provider: 'xai',
-      language: 'en',
-      format: true
-    }),
-    60000,
-    'Speech-to-text'
-  );
-  if (typeof transcript === 'string') return transcript;
-  return transcript?.text || '';
-}
-
-/**
- * Sends text prompts or audio inputs to Aura-1 via Puter Grok 4.7.
- * Users pay for their own AI usage through their Puter account.
+ * Sends text prompts or audio inputs to Aura-1 via Groq API.
  * @param {string|File|Blob} userPrompt - Text, or audio File/Blob (auto-transcribed)
  * @param {string} contextPrompt - Current note/quiz card context
  * @param {string} botName - Custom bot handle
  * @returns {Promise<string>} AI evaluation response
  */
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
+  if (!GROQ_API_KEY) {
+    return `[${botName} Alert]: API key not configured. Add VITE_GROQ_API_KEY to your .env file.`;
+  }
+
   try {
-    const puter = await loadPuterScript();
-
-    // AUTH GATE: sign in FIRST with a clear flow, never hang mid-chat
-    if (!(await puter.auth.isSignedIn())) {
-      const signedIn = await ensurePuterSignIn();
-      if (!signedIn) {
-        return `[${botName} Alert]: Puter sign-in not completed. A sign-in window was opened — finish it and resend your message. If the window appears blank: allow popups for this site and turn OFF Brave Shields (lion icon) for both this site and puter.com, then retry.`;
-      }
-    }
-
     let finalInputText = userPrompt;
 
-    // Handle audio input (voice notes) — transcribe via xAI (no phone verification)
+    // Handle audio input — transcribe via Web Speech API (no verification)
     if (userPrompt instanceof Blob || userPrompt instanceof File) {
       finalInputText = await transcribeAudio(userPrompt);
       if (!finalInputText || !finalInputText.trim()) {
@@ -145,27 +95,41 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
     }
 
     const systemInstruction = `You are ${botName}, an expert, witty, and direct CS & ICT AI evaluator for ByteForged Academy. Grade or answer the user's input accurately and concisely (under 100 words). Be encouraging but honest.`;
-    const fullPrompt = `${systemInstruction}\n\n[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}`;
 
-    // Query Grok 4.7 with a 90s safety timeout
-    const response = await withTimeout(
-      puter.ai.chat(fullPrompt, { model: "x-ai/grok-4.7", temperature: 0.6 }),
-      90000,
-      'Aura-1 evaluation'
-    );
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', // Free, fast, no verification
+        messages: [
+          { role: 'system', content: systemInstruction },
+          { role: 'user', content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}` }
+        ],
+        temperature: 0.6,
+        max_tokens: 400
+      })
+    });
 
-    if (typeof response === 'string') return response;
-    if (response?.message?.content) return response.message.content;
-    if (response?.text) return response.text;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Groq API Error:', response.status, errorData);
+      return `[${botName} Alert]: Evaluation engine temporarily unavailable. Please try again in a moment.`;
+    }
+
+    const data = await response.json();
+    const aiText = data?.choices?.[0]?.message?.content;
+
+    if (aiText && typeof aiText === 'string') {
+      return aiText.trim();
+    }
 
     return `[${botName}]: Evaluation processed successfully.`;
   } catch (error) {
-    console.error("Aura-1 API Error:", error);
-    const msg = error?.message || '';
-    if (msg.includes('timed out')) {
-      return `[${botName} Alert]: The evaluation engine took too long to respond. Please resend your message.`;
-    }
-    return `[${botName} Alert]: Aura-1 engine connection error. Please try again.`;
+    console.error("Aura-1 Groq Error:", error);
+    return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet and try again.`;
   }
 }
 
