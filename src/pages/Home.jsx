@@ -27,6 +27,11 @@ const EARNABLE_TITLES = {
 const SELF_ROLES = ['Member', 'Leader', 'Contributor', 'Strategist', 'Reviewer'];
 const PLAYBACK_SPEEDS = [0.5, 1, 1.5, 2];
 
+// 🔧 Own namespace — no collisions with PracticeLab or Minigames
+const HOME_CHAT_TAB_KEY = 'byteforged_home_chat_tab';
+const HOME_BOT_CHAT_KEY = (topic) => `byteforged_home_bot_chat_${topic}`;
+const MAX_PERSISTED_BOT_MSGS = 60;
+
 const getFallbackTopicData = (topicId) => {
   const cleanTitle = (topicId || 'ict-101').replace('-', ' ').toUpperCase();
   const notes = Array.from({ length: 30 }, (_, i) => ({
@@ -158,21 +163,19 @@ export default function Home() {
   const [earnedMedal, setEarnedMedal] = useState(topicSavedState.earnedMedal || null);
   const [earnedTitle, setEarnedTitle] = useState(topicSavedState.earnedTitle || '');
 
-  const [chatTab, setChatTab] = useState(() => localStorage.getItem('byteforged_chat_tab') || 'bot');
-  useEffect(() => { localStorage.setItem('byteforged_chat_tab', chatTab); }, [chatTab]);
+  // 🔧 FIX 1: Own localStorage key — no collision with PracticeLab/Minigames
+  const [chatTab, setChatTab] = useState(() => {
+    try { return localStorage.getItem(HOME_CHAT_TAB_KEY) || 'bot'; } catch { return 'bot'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(HOME_CHAT_TAB_KEY, chatTab); } catch {}
+  }, [chatTab]);
   useEffect(() => {
     if (!isTeamMode && chatTab !== 'bot') setChatTab('bot');
   }, [isTeamMode]);
   
   const [inputText, setInputText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-
-  const initialBotChatState = [{
-    id: 'bot-init-1', sender: botName || 'Aura-1', avatar: '🤖',
-    text: `System online. I am ${botName || 'Aura-1'}, your CS & ICT evaluator. Need help or code breakdown for this step?`,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: 'system'
-  }];
-  const [botChatMessages, setBotChatMessages] = useState(initialBotChatState);
 
   const [teamChatMessages, setTeamChatMessages] = useState([]);
   const [myTeamId, setMyTeamId] = useState(null);
@@ -214,9 +217,7 @@ export default function Home() {
   const streamRef = useRef(null);
   const isRecordingRef = useRef(false);
 
-  // 🔧 NEW: live speech-to-text preview while recording (Aura-1 evaluation only)
   const [liveTranscript, setLiveTranscript] = useState('');
-  // 🔧 NEW: copy-to-clipboard feedback state
   const [copyFeedback, setCopyFeedback] = useState(false);
 
   const [isBotModalOpen, setIsBotModalOpen] = useState(false);
@@ -230,6 +231,78 @@ export default function Home() {
   useEffect(() => {
     if (!isTeamMode) setIsTeamProfileOpen(false);
   }, [isTeamMode]);
+
+  // 🔧 FIX 2: Bot messages persist per topic to localStorage
+  // Strip audioUrl on save (blob: URLs die on reload) and cap at MAX_PERSISTED_BOT_MSGS
+  const getInitialGreeting = useCallback(() => ([{
+    id: 'bot-init-1',
+    sender: botName || 'Aura-1',
+    avatar: '🤖',
+    text: `System online. I am ${botName || 'Aura-1'}, your CS & ICT evaluator. Need help or code breakdown for this step?`,
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    type: 'system'
+  }]), [botName]);
+
+  const [botChatMessages, setBotChatMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem(HOME_BOT_CHAT_KEY(activeTopicKey));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Strip any leftover blob URLs from previous sessions to prevent AudioPlayer crash
+          return parsed.map(m => {
+            if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
+              const { audioUrl, duration, ...rest } = m;
+              return rest;
+            }
+            return m;
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load persisted bot chat:', e);
+    }
+    return getInitialGreeting();
+  });
+
+  // Reload persisted messages when the topic changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(HOME_BOT_CHAT_KEY(activeTopicKey));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setBotChatMessages(parsed.map(m => {
+            if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
+              const { audioUrl, duration, ...rest } = m;
+              return rest;
+            }
+            return m;
+          }));
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load persisted bot chat for new topic:', e);
+    }
+    setBotChatMessages(getInitialGreeting());
+  }, [activeTopicKey, getInitialGreeting]);
+
+  // Save bot messages to localStorage on change (strip blob URLs, cap length)
+  useEffect(() => {
+    try {
+      const clean = botChatMessages.slice(-MAX_PERSISTED_BOT_MSGS).map(m => {
+        if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
+          const { audioUrl, duration, ...rest } = m;
+          return rest;
+        }
+        return m;
+      });
+      localStorage.setItem(HOME_BOT_CHAT_KEY(activeTopicKey), JSON.stringify(clean));
+    } catch (e) {
+      console.warn('Failed to persist bot chat:', e);
+    }
+  }, [botChatMessages, activeTopicKey]);
 
   const syncRosterFromDB = async () => {
     if (!user?.id) return;
@@ -458,7 +531,6 @@ export default function Home() {
         mediaRecorderRef.current.stop();
       }
     } catch (e) {}
-    // 🔧 Stop live transcription capture (buffer kept until consumed)
     stopLiveTranscript();
     cleanupStream();
     clearInterval(timerRef.current);
@@ -566,7 +638,6 @@ export default function Home() {
     }
     setIsRecording(true);
     setIsMicRequesting(false);
-    // 🔧 Start live speech-to-text capture alongside the recorder (free, in-browser)
     startLiveTranscript((t) => setLiveTranscript(t));
     try { sounds?.playUnlock?.(); } catch {}
     timerRef.current = setInterval(() => {
@@ -602,7 +673,6 @@ export default function Home() {
         duration,
         time: timeStr
       }]);
-      // 🔧 Use the live-captured transcript (no Puter, no paid STT)
       const transcript = consumeLiveTranscript();
       setLiveTranscript('');
       if (transcript) {
@@ -616,7 +686,6 @@ export default function Home() {
         setIsThinking(false);
       }
     } else if (target === 'team' && myTeamId) {
-      // Team voice notes keep working exactly as before (audio blob → Supabase)
       consumeLiveTranscript();
       setLiveTranscript('');
       const audioUrl = await uploadVoiceNote(blob);
@@ -700,7 +769,6 @@ export default function Home() {
     setIsFlipped(!isFlipped);
   };
 
-  // 🔧 NEW: Copy current card content to clipboard (replaces dead Share button)
   const handleCopyCard = async () => {
     let text = '';
     if (!isQuizMode) {
@@ -760,6 +828,7 @@ export default function Home() {
     }
   };
 
+  // 🔧 FIX 3: Reset clears persisted bot chat for THIS topic only
   const handleResetTopic = () => {
     try { sounds?.playClick?.(); } catch {}
     setNoteIndex(0); setQuizIndex(0); setIsQuizMode(false); setIsFlipped(false);
@@ -767,6 +836,7 @@ export default function Home() {
     setEarnedMedal(null); setEarnedTitle('');
     setBotChatMessages([{ id: 'sys-reset', sender: botName || 'Aura-1', avatar: '', text: `✨ System reset complete. Hi, I'm ${botName || 'Aura-1'}! Ready to evaluate your progress with care (0–10 pts per card).`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: 'system' }]);
     if (updateTopicProgress) updateTopicProgress(activeTopicKey, 0, null, '');
+    try { localStorage.removeItem(HOME_BOT_CHAT_KEY(activeTopicKey)); } catch {}
   };
 
   const handleClearChat = () => {
@@ -868,7 +938,6 @@ export default function Home() {
         <div className="lg:col-span-7 space-y-4">
           <div className="bg-slate-900/40 border border-cyan-500/20 rounded-3xl p-6 relative overflow-hidden shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl flex flex-col justify-between min-h-[540px]">
             <div className="space-y-3 border-b border-slate-800 pb-4">
-              {/* 🔧 Decluttered: dead Menu button removed, dead Share button replaced with Copy */}
               <div className="flex items-center justify-between">
                 <div className="font-mono">
                   <span className="text-xs text-cyan-300/70 font-extrabold uppercase tracking-widest block">SYSTEM ARCHITECTURE</span>
