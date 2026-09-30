@@ -1,52 +1,41 @@
-// src/lib/aura.js (Aura-1 AI Engine — X.AI Console Grok direct API + graceful voice handling)
+// src/lib/aura.js (Aura-1 AI Engine — Google Gemini, text-to-text only. Zero Puter. Zero verification.)
 
-/**
- * Safe getter for the X.AI API key — never crashes at module load.
- */
-function getXaiApiKey() {
+function getGeminiApiKey() {
   try {
-    return import.meta?.env?.VITE_XAI_API_KEY || '';
+    return import.meta?.env?.VITE_GEMINI_API_KEY || '';
   } catch {
     return '';
   }
 }
 
-const XAI_API_URL = 'https://api.x.ai/v1/chat/completions';
+// OpenAI-compatible endpoint (cleaner than the native Gemini one)
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-// 🔧 Self-healing model chain: if Groq-style retirement happens here too,
-// Aura-1 walks the list and caches whichever model answers.
-const XAI_MODEL_CANDIDATES = [
-  'grok-4-fast',
-  'grok-4',
-  'grok-3-mini',
-  'grok-3',
+// Stable Gemini models — try fastest first, fall back to older ones
+const GEMINI_MODEL_CANDIDATES = [
+  'gemini-2.0-flash-exp',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest',
 ];
 
 let cachedModel = null;
 
-/**
- * Calls the X.AI console API, walking the model chain on 404.
- */
-async function callXai(messages, apiKey) {
+async function callGemini(messages, apiKey) {
   const ordered = cachedModel
-    ? [cachedModel, ...XAI_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
-    : [...XAI_MODEL_CANDIDATES];
+    ? [cachedModel, ...GEMINI_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
+    : [...GEMINI_MODEL_CANDIDATES];
 
   let lastStatus = null;
+  let lastBody = '';
 
   for (const model of ordered) {
-    const response = await fetch(XAI_API_URL, {
+    const response = await fetch(GEMINI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.6,
-        max_tokens: 400,
-      }),
+      body: JSON.stringify({ model, messages, temperature: 0.6, max_tokens: 400 }),
     });
 
     if (response.ok) {
@@ -56,104 +45,120 @@ async function callXai(messages, apiKey) {
     }
 
     lastStatus = response.status;
-    if (response.status === 404) continue; // retired/unknown model → try next
-    return { ok: false, status: response.status, response };
+    lastBody = await response.text().catch(() => '');
+
+    // 404 = model not available → try next
+    if (response.status === 404) continue;
+    return { ok: false, status: response.status, response: null, body: lastBody };
   }
 
-  return { ok: false, status: lastStatus, response: null };
+  return { ok: false, status: lastStatus, response: null, body: lastBody };
 }
 
-/**
- * Loads Puter.js lazily — used ONLY for speech-to-text fallback, never for chat.
- */
-function loadPuterScript() {
-  return new Promise((resolve, reject) => {
-    if (window.puter) { resolve(window.puter); return; }
-    const existingScript = document.querySelector('script[src="https://js.puter.com/v2/"]');
-    if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(window.puter));
-      existingScript.addEventListener('error', () => reject(new Error('Failed to load Puter.js SDK')));
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://js.puter.com/v2/';
-    script.onload = () => resolve(window.puter);
-    script.onerror = () => reject(new Error('Failed to load Puter.js SDK'));
-    document.head.appendChild(script);
-  });
+// ============================================================================
+// LIVE TRANSCRIPTION — Web Speech API (browser-native, free, zero services)
+// Captures words WHILE user records. Team/role voice notes unaffected.
+// ============================================================================
+let recognitionInstance = null;
+let liveTranscriptBuffer = '';
+
+export function isLiveTranscriptionSupported() {
+  return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 }
 
-/**
- * Transcribes audio via Puter speech2txt (xAI provider).
- * Throws on failure so the caller can degrade gracefully.
- */
-export async function transcribeAudio(audioFile) {
-  const puter = await loadPuterScript();
+export function startLiveTranscript(onUpdate) {
+  stopLiveTranscript();
+  liveTranscriptBuffer = '';
+  const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+  if (!SR) return false;
 
   try {
-    const transcript = await puter.ai.speech2txt({
-      file: audioFile,
-      provider: 'xai',
-      language: 'en',
-      format: true,
-    });
-    if (typeof transcript === 'string') return transcript;
-    if (transcript?.text) return transcript.text;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = 'en-US';
+    rec.onresult = (e) => {
+      let chunk = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) chunk += e.results[i][0].transcript + ' ';
+      }
+      if (chunk) {
+        liveTranscriptBuffer += chunk;
+        if (onUpdate) onUpdate(liveTranscriptBuffer.trim());
+      }
+    };
+    rec.onerror = (e) => console.warn('Live transcription error:', e?.error);
+    rec.start();
+    recognitionInstance = rec;
+    return true;
   } catch (e) {
-    console.warn('xAI speech2txt (object form) failed, trying positional form:', e);
+    console.warn('Could not start live transcription:', e);
+    return false;
   }
+}
 
-  const transcript = await puter.ai.speech2txt(audioFile, {
-    provider: 'xai',
-    language: 'en',
-    format: true,
-  });
-  if (typeof transcript === 'string') return transcript;
-  return transcript?.text || '';
+export function stopLiveTranscript() {
+  if (recognitionInstance) {
+    try { recognitionInstance.stop(); } catch (e) {}
+    recognitionInstance = null;
+  }
+  return liveTranscriptBuffer.trim();
+}
+
+export function consumeLiveTranscript() {
+  const t = liveTranscriptBuffer.trim();
+  liveTranscriptBuffer = '';
+  return t;
+}
+
+export async function transcribeAudio() {
+  throw new Error('File transcription removed: use startLiveTranscript/consumeLiveTranscript during recording.');
 }
 
 /**
- * Sends text or audio to Aura-1 via X.AI Console Grok.
- * Your key, your quota (~1,440 req/month free tier) — no Puter involved in chat.
+ * Sends text (or live-captured speech) to Aura-1 via Google Gemini.
+ * Your key, your monthly quota. No Puter. No sign-in popups. No verification.
  */
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
-  const apiKey = getXaiApiKey();
+  const apiKey = getGeminiApiKey();
 
   if (!apiKey) {
-    return `[${botName} Alert]: X.AI API key not configured. Add VITE_XAI_API_KEY to .env.local (dev) and to the GitHub Actions secret (deploy), then rebuild.`;
+    return `[${botName} Alert]: Gemini API key not configured. Add VITE_GEMINI_API_KEY to .env.local (dev) and GitHub secret (deploy), then rebuild.`;
+  }
+
+  if (userPrompt instanceof Blob || userPrompt instanceof File) {
+    return `[${botName} Alert]: Voice answers are transcribed live while you record. No speech text captured — please type your answer or re-record in Chrome/Edge.`;
   }
 
   try {
-    let finalInputText = userPrompt;
-
-    // Voice input → transcribe; degrade gracefully if unavailable
-    if (userPrompt instanceof Blob || userPrompt instanceof File) {
-      try {
-        finalInputText = await transcribeAudio(userPrompt);
-      } catch (e) {
-        console.warn('Voice transcription unavailable:', e);
-        return `[${botName} Alert]: Voice transcription is unavailable right now. Please type your answer instead — text evaluation works perfectly.`;
-      }
-      if (!finalInputText || !finalInputText.trim()) {
-        return `[${botName} Alert]: I couldn't understand that audio. Please re-record or type your answer.`;
-      }
-    }
-
     const systemInstruction = `You are ${botName}, an expert, witty, and direct CS & ICT AI evaluator for ByteForged Academy. Grade or answer the user's input accurately and concisely (under 100 words). Be encouraging but honest.`;
 
     const messages = [
       { role: 'system', content: systemInstruction },
-      { role: 'user', content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}` },
+      { role: 'user', content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${userPrompt}` },
     ];
 
-    const result = await callXai(messages, apiKey);
+    const result = await Promise.race([
+      callGemini(messages, apiKey),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini request timed out')), 60000)),
+    ]);
 
     if (!result.ok) {
-      console.error('X.AI API Error:', result.status);
-      if (result.status === 401) return `[${botName} Alert]: X.AI key rejected (401). Regenerate the key in console.x.ai and update the secret + .env.local.`;
-      if (result.status === 429) return `[${botName} Alert]: Monthly quota reached (429). Your free X.AI tier resets next cycle — text me later or upgrade in console.x.ai.`;
-      if (result.status === 404) return `[${botName} Alert]: No valid Grok model found (404). Update the model list in aura.js from console.x.ai/docs/models.`;
-      return `[${botName} Alert]: Evaluation engine temporarily unavailable (code ${result.status}). Please try again in a moment.`;
+      console.error('Gemini API Error:', result.status, result.body);
+      const snippet = (result.body || '').slice(0, 200);
+      if (result.status === 400) {
+        return `[${botName} Alert]: Gemini rejected request (400). Raw: ${snippet}`;
+      }
+      if (result.status === 401 || result.status === 403) {
+        return `[${botName} Alert]: Gemini key rejected (${result.status}). Copy your active key from aistudio.google.com/apikey and update both .env.local and the GitHub secret.`;
+      }
+      if (result.status === 429) {
+        return `[${botName} Alert]: Gemini rate limit reached (429). Wait a moment and try again — free tier: 15 requests/min, 1,500/day.`;
+      }
+      if (result.status === 404) {
+        return `[${botName} Alert]: No valid Gemini model found (404). Update model list in aura.js.`;
+      }
+      return `[${botName} Alert]: Gemini unavailable (code ${result.status}). Raw: ${snippet}`;
     }
 
     const data = await result.response.json();
@@ -162,14 +167,15 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
     if (aiText && typeof aiText === 'string') return aiText.trim();
     return `[${botName}]: Evaluation processed successfully.`;
   } catch (error) {
-    console.error("Aura-1 X.AI Error:", error);
-    // "Failed to fetch" usually means network or CORS blocking the browser call
-    if (error?.message?.includes('fetch')) {
-      return `[${botName} Alert]: Browser blocked the connection to api.x.ai (network/CORS). Tell Luna — we'll add a tiny proxy if X.AI restricts browser calls.`;
+    console.error("Aura-1 Gemini Error:", error);
+    if (error?.message?.includes('timed out')) {
+      return `[${botName} Alert]: Gemini took too long. Please resend your message.`;
     }
-    return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet and try again.`;
+    if (error?.message?.includes('fetch')) {
+      return `[${botName} Alert]: Browser blocked connection to Gemini (network/CORS). Check your internet.`;
+    }
+    return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet.`;
   }
 }
 
-// Backward-compatible export alias
 export const askQwenBot = askAura1Bot;
