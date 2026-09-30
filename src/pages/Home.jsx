@@ -27,7 +27,7 @@ const EARNABLE_TITLES = {
 const SELF_ROLES = ['Member', 'Leader', 'Contributor', 'Strategist', 'Reviewer'];
 const PLAYBACK_SPEEDS = [0.5, 1, 1.5, 2];
 
-// 🔧 Own namespace — no collisions with PracticeLab or Minigames
+// 🔧 Isolated namespace — no collisions with PracticeLab or Minigames
 const HOME_CHAT_TAB_KEY = 'byteforged_home_chat_tab';
 const HOME_BOT_CHAT_KEY = (topic) => `byteforged_home_bot_chat_${topic}`;
 const MAX_PERSISTED_BOT_MSGS = 60;
@@ -163,13 +163,24 @@ export default function Home() {
   const [earnedMedal, setEarnedMedal] = useState(topicSavedState.earnedMedal || null);
   const [earnedTitle, setEarnedTitle] = useState(topicSavedState.earnedTitle || '');
 
-  // 🔧 FIX 1: Own localStorage key — no collision with PracticeLab/Minigames
+  // 🔧 Chat tab persistence — isolated key, survives reloads and page switches
   const [chatTab, setChatTab] = useState(() => {
-    try { return localStorage.getItem(HOME_CHAT_TAB_KEY) || 'bot'; } catch { return 'bot'; }
+    try {
+      return localStorage.getItem(HOME_CHAT_TAB_KEY) || 'bot';
+    } catch (e) {
+      console.warn('Failed to load chat tab preference:', e);
+      return 'bot';
+    }
   });
+
   useEffect(() => {
-    try { localStorage.setItem(HOME_CHAT_TAB_KEY, chatTab); } catch {}
+    try {
+      localStorage.setItem(HOME_CHAT_TAB_KEY, chatTab);
+    } catch (e) {
+      console.warn('Failed to save chat tab preference:', e);
+    }
   }, [chatTab]);
+
   useEffect(() => {
     if (!isTeamMode && chatTab !== 'bot') setChatTab('bot');
   }, [isTeamMode]);
@@ -232,8 +243,7 @@ export default function Home() {
     if (!isTeamMode) setIsTeamProfileOpen(false);
   }, [isTeamMode]);
 
-  // 🔧 FIX 2: Bot messages persist per topic to localStorage
-  // Strip audioUrl on save (blob: URLs die on reload) and cap at MAX_PERSISTED_BOT_MSGS
+  // 🔧 Bot messages persist per topic — ONLY cleared by manual delete buttons
   const getInitialGreeting = useCallback(() => ([{
     id: 'bot-init-1',
     sender: botName || 'Aura-1',
@@ -243,66 +253,70 @@ export default function Home() {
     type: 'system'
   }]), [botName]);
 
+  // Strip blob URLs from persisted messages (they die on reload)
+  const cleanBotMessages = useCallback((msgs) => {
+    if (!Array.isArray(msgs)) return [];
+    return msgs.map(m => {
+      if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
+        const { audioUrl, duration, ...rest } = m;
+        return rest;
+      }
+      return m;
+    });
+  }, []);
+
   const [botChatMessages, setBotChatMessages] = useState(() => {
     try {
       const saved = localStorage.getItem(HOME_BOT_CHAT_KEY(activeTopicKey));
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Strip any leftover blob URLs from previous sessions to prevent AudioPlayer crash
-          return parsed.map(m => {
-            if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
-              const { audioUrl, duration, ...rest } = m;
-              return rest;
-            }
-            return m;
-          });
+          return cleanBotMessages(parsed);
         }
       }
     } catch (e) {
-      console.warn('Failed to load persisted bot chat:', e);
+      console.warn('Failed to load persisted bot chat on mount:', e);
     }
     return getInitialGreeting();
   });
 
-  // Reload persisted messages when the topic changes
+  // Reload persisted messages when topic changes
   useEffect(() => {
     try {
       const saved = localStorage.getItem(HOME_BOT_CHAT_KEY(activeTopicKey));
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setBotChatMessages(parsed.map(m => {
-            if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
-              const { audioUrl, duration, ...rest } = m;
-              return rest;
-            }
-            return m;
-          }));
+          setBotChatMessages(cleanBotMessages(parsed));
           return;
         }
       }
     } catch (e) {
       console.warn('Failed to load persisted bot chat for new topic:', e);
     }
+    // Only reset to greeting if NO saved data exists for this topic
     setBotChatMessages(getInitialGreeting());
-  }, [activeTopicKey, getInitialGreeting]);
+  }, [activeTopicKey, getInitialGreeting, cleanBotMessages]);
 
   // Save bot messages to localStorage on change (strip blob URLs, cap length)
   useEffect(() => {
     try {
-      const clean = botChatMessages.slice(-MAX_PERSISTED_BOT_MSGS).map(m => {
-        if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
-          const { audioUrl, duration, ...rest } = m;
-          return rest;
-        }
-        return m;
-      });
+      const clean = cleanBotMessages(botChatMessages).slice(-MAX_PERSISTED_BOT_MSGS);
       localStorage.setItem(HOME_BOT_CHAT_KEY(activeTopicKey), JSON.stringify(clean));
     } catch (e) {
-      console.warn('Failed to persist bot chat:', e);
+      if (e.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded, truncating bot chat history');
+        try {
+          const truncated = cleanBotMessages(botChatMessages).slice(-30);
+          localStorage.setItem(HOME_BOT_CHAT_KEY(activeTopicKey), JSON.stringify(truncated));
+        } catch (e2) {
+          console.error('Failed to save even truncated bot chat:', e2);
+        }
+      } else {
+        console.warn('Failed to persist bot chat:', e);
+      }
     }
-  }, [botChatMessages, activeTopicKey]);
+  }, [botChatMessages, activeTopicKey, cleanBotMessages]);
 
   const syncRosterFromDB = async () => {
     if (!user?.id) return;
@@ -828,7 +842,7 @@ export default function Home() {
     }
   };
 
-  // 🔧 FIX 3: Reset clears persisted bot chat for THIS topic only
+  // 🔧 Reset clears persisted bot chat for THIS topic only (intentional topic reset)
   const handleResetTopic = () => {
     try { sounds?.playClick?.(); } catch {}
     setNoteIndex(0); setQuizIndex(0); setIsQuizMode(false); setIsFlipped(false);
@@ -839,6 +853,7 @@ export default function Home() {
     try { localStorage.removeItem(HOME_BOT_CHAT_KEY(activeTopicKey)); } catch {}
   };
 
+  // 🔧 Manual clear button — ONLY way to clear bot chat (besides topic reset)
   const handleClearChat = () => {
     if (chatTab === 'bot') {
       if (window.confirm('Are you sure you want to delete all workspace messages?')) {
