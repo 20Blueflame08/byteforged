@@ -1,4 +1,4 @@
-// src/lib/aura.js (Aura-1 AI Engine — X.AI Console Grok ONLY. No Puter anywhere.)
+// src/lib/aura.js (Aura-1 AI Engine — X.AI Console Grok direct. ZERO Puter. ZERO verification.)
 
 /**
  * Safe getter for the X.AI API key — never crashes at module load.
@@ -13,7 +13,7 @@ function getXaiApiKey() {
 
 const XAI_API_URL = 'https://api.x.ai/v1/chat/completions';
 
-// Self-healing model chain: retired models are skipped automatically.
+// Self-healing model chain (same order as the version that worked for you)
 const XAI_MODEL_CANDIDATES = [
   'grok-4-fast',
   'grok-4',
@@ -23,12 +23,17 @@ const XAI_MODEL_CANDIDATES = [
 
 let cachedModel = null;
 
+/**
+ * Calls the X.AI console API, walking the model chain on 404.
+ * Captures the raw error body on failure for instant diagnosis.
+ */
 async function callXai(messages, apiKey) {
   const ordered = cachedModel
     ? [cachedModel, ...XAI_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
     : [...XAI_MODEL_CANDIDATES];
 
   let lastStatus = null;
+  let lastBody = '';
 
   for (const model of ordered) {
     const response = await fetch(XAI_API_URL, {
@@ -47,17 +52,19 @@ async function callXai(messages, apiKey) {
     }
 
     lastStatus = response.status;
-    if (response.status === 404) continue;
-    return { ok: false, status: response.status, response };
+    lastBody = await response.text().catch(() => '');
+
+    if (response.status === 404) continue; // retired model → try next
+    return { ok: false, status: response.status, response: null, body: lastBody };
   }
 
-  return { ok: false, status: lastStatus, response: null };
+  return { ok: false, status: lastStatus, response: null, body: lastBody };
 }
 
 // ============================================================================
-// LIVE TRANSCRIPTION — Web Speech API (free, browser-native, no Puter, no keys)
-// Captures words WHILE the user records. Team/role voice notes still send
-// audio blobs to Supabase as before — only Aura-1 evaluation uses the text.
+// LIVE TRANSCRIPTION — Web Speech API (browser-native, free, no Puter, no keys)
+// Captures words WHILE the user records. Team/role voice notes are unaffected
+// (they send audio blobs to Supabase as always).
 // ============================================================================
 let recognitionInstance = null;
 let liveTranscriptBuffer = '';
@@ -66,10 +73,6 @@ export function isLiveTranscriptionSupported() {
   return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 }
 
-/**
- * Starts live speech capture. Call when recording starts.
- * @param {(text: string) => void} onUpdate - optional live preview callback
- */
 export function startLiveTranscript(onUpdate) {
   stopLiveTranscript();
   liveTranscriptBuffer = '';
@@ -101,9 +104,6 @@ export function startLiveTranscript(onUpdate) {
   }
 }
 
-/**
- * Stops live capture. Keeps the buffer until consumed.
- */
 export function stopLiveTranscript() {
   if (recognitionInstance) {
     try { recognitionInstance.stop(); } catch (e) {}
@@ -112,9 +112,6 @@ export function stopLiveTranscript() {
   return liveTranscriptBuffer.trim();
 }
 
-/**
- * Returns captured text and clears the buffer.
- */
 export function consumeLiveTranscript() {
   const t = liveTranscriptBuffer.trim();
   liveTranscriptBuffer = '';
@@ -122,7 +119,7 @@ export function consumeLiveTranscript() {
 }
 
 /**
- * Legacy export kept so older imports don't break the build.
+ * Legacy export kept so old imports can't break the build.
  * File-blob transcription is gone — voice is captured live during recording.
  */
 export async function transcribeAudio() {
@@ -130,10 +127,8 @@ export async function transcribeAudio() {
 }
 
 /**
- * Sends text to Aura-1 via X.AI Console Grok.
- * @param {string|Blob|File} userPrompt - text expected; blobs get a graceful guide message
- * @param {string} contextPrompt - current note/quiz context
- * @param {string} botName - custom bot handle
+ * Sends text (or live-captured speech text) to Aura-1 via X.AI Console Grok.
+ * Your key, your monthly quota. No Puter. No sign-in popups. No verification.
  */
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
   const apiKey = getXaiApiKey();
@@ -143,7 +138,7 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
   }
 
   if (userPrompt instanceof Blob || userPrompt instanceof File) {
-    return `[${botName} Alert]: Voice answers are now transcribed live while you record. No speech text was captured for this note — please type your answer or re-record in Chrome/Edge.`;
+    return `[${botName} Alert]: Voice answers are transcribed live while you record. No speech text was captured for this note — please type your answer or re-record in Chrome/Edge.`;
   }
 
   try {
@@ -160,11 +155,21 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
     ]);
 
     if (!result.ok) {
-      console.error('X.AI API Error:', result.status);
-      if (result.status === 401) return `[${botName} Alert]: X.AI key rejected (401). Regenerate the key in console.x.ai and update the secret + .env.local.`;
-      if (result.status === 429) return `[${botName} Alert]: Monthly quota reached (429). Your free X.AI allocation resets next cycle.`;
-      if (result.status === 404) return `[${botName} Alert]: No valid Grok model found (404). Update the model list in aura.js from console.x.ai/docs/models.`;
-      return `[${botName} Alert]: Evaluation engine temporarily unavailable (code ${result.status}). Please try again in a moment.`;
+      console.error('X.AI API Error:', result.status, result.body);
+      const snippet = (result.body || '').slice(0, 180);
+      if (result.status === 401) {
+        return `[${botName} Alert]: X.AI key rejected (401 invalid). Copy your ACTIVE key from console.x.ai → API Keys, update the GitHub secret + .env.local, then rebuild.`;
+      }
+      if (result.status === 403) {
+        return `[${botName} Alert]: X.AI says forbidden/revoked (403). This means the key in this environment is old or revoked. Fix: console.x.ai → API Keys → copy the ACTIVE key → update GitHub secret VITE_XAI_API_KEY AND .env.local with the SAME key → push to rebuild. Raw: ${snippet}`;
+      }
+      if (result.status === 429) {
+        return `[${botName} Alert]: Monthly quota reached (429). Your free X.AI allocation resets next cycle.`;
+      }
+      if (result.status === 404) {
+        return `[${botName} Alert]: No valid Grok model found (404). Update the model list in aura.js from console.x.ai/docs/models.`;
+      }
+      return `[${botName} Alert]: Evaluation engine unavailable (code ${result.status}). Raw: ${snippet}`;
     }
 
     const data = await result.response.json();
@@ -178,7 +183,7 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
       return `[${botName} Alert]: The evaluation engine took too long to respond. Please resend your message.`;
     }
     if (error?.message?.includes('fetch')) {
-      return `[${botName} Alert]: Browser blocked the connection to api.x.ai (network/CORS). Tell Luna — we'll add a tiny proxy if needed.`;
+      return `[${botName} Alert]: Browser blocked the connection to api.x.ai (network/CORS). Tell Luna with the console output.`;
     }
     return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet and try again.`;
   }
