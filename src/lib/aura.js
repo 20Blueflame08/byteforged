@@ -1,17 +1,11 @@
-// src/lib/aura.js (Aura-1 AI Engine — Google Gemini native API. Zero Puter. Zero verification.)
+// src/lib/aura.js (Aura-1 — Google Gemini native API, self-healing + self-diagnosing)
 
 function getGeminiApiKey() {
-  try {
-    return import.meta?.env?.VITE_GEMINI_API_KEY || '';
-  } catch {
-    return '';
-  }
+  try { return import.meta?.env?.VITE_GEMINI_API_KEY || ''; } catch { return ''; }
 }
 
-// Native Gemini endpoint (most stable; works with new AQ.* keys)
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-// 2026-stable candidates, fastest first
 const GEMINI_MODEL_CANDIDATES = [
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
@@ -21,153 +15,118 @@ const GEMINI_MODEL_CANDIDATES = [
 
 let cachedModel = null;
 
-/**
- * Auto-discover a working model from the key's live model list.
- * Prefers flash-lite → flash → pro → any gemini.
- */
-async function discoverModel(apiKey) {
+/** Fetch the live list of model names this key can use. */
+async function fetchModelList(apiKey) {
   try {
-    const res = await fetch(`${GEMINI_BASE}?pageSize=100`, {
-      headers: { 'x-goog-api-key': apiKey },
-    });
-    if (!res.ok) return null;
+    const res = await fetch(`${GEMINI_BASE}?key=${encodeURIComponent(apiKey)}&pageSize=200`);
+    if (!res.ok) return [];
     const data = await res.json();
-    const names = (data.models || []).map((m) => (m.name || '').replace('models/', ''));
-    return (
-      names.find((n) => n.includes('flash-lite')) ||
-      names.find((n) => n.includes('flash')) ||
-      names.find((n) => n.startsWith('gemini')) ||
-      names[0] ||
-      null
-    );
-  } catch {
-    return null;
-  }
+    return (data.models || []).map((m) => (m.name || '').replace('models/', ''));
+  } catch { return []; }
+}
+
+function pickBest(names) {
+  return (
+    names.find((n) => n.includes('flash-lite')) ||
+    names.find((n) => n.includes('flash')) ||
+    names.find((n) => n.startsWith('gemini')) ||
+    names[0] || null
+  );
+}
+
+async function generate(model, systemInstruction, userText, apiKey) {
+  return fetch(`${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+      contents: [{ role: 'user', parts: [{ text: userText }] }],
+      generationConfig: { temperature: 0.6, maxOutputTokens: 400 },
+    }),
+  });
 }
 
 async function callGemini(systemInstruction, userText, apiKey) {
-  // Build the ordered model list: cached → candidates → (discovered if needed)
   let ordered = cachedModel
     ? [cachedModel, ...GEMINI_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
     : [...GEMINI_MODEL_CANDIDATES];
 
   let lastStatus = null;
   let lastBody = '';
-  let discovered = false;
 
-  for (let attempt = 0; attempt < ordered.length + 1; attempt++) {
-    // If we exhausted candidates with 404s, discover a live model once
-    if (attempt >= ordered.length) {
-      if (discovered) break;
-      const found = await discoverModel(apiKey);
-      if (!found) break;
-      console.info('Aura-1 discovered live model:', found);
-      ordered = [found];
-      discovered = true;
-    }
-
-    const model = ordered[attempt];
-    const response = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents: [{ role: 'user', parts: [{ text: userText }] }],
-        generationConfig: { temperature: 0.6, maxOutputTokens: 400 },
-      }),
-    });
-
+  for (const model of ordered) {
+    const response = await generate(model, systemInstruction, userText, apiKey);
     if (response.ok) {
       cachedModel = model;
       console.info(`Aura-1 engine online via model: ${model}`);
       return { ok: true, response };
     }
-
     lastStatus = response.status;
     lastBody = await response.text().catch(() => '');
-
-    // 404 = model retired → try next candidate (or discover)
-    if (response.status === 404) continue;
-    return { ok: false, status: response.status, response: null, body: lastBody };
+    if (response.status === 404) continue; // retired model → next
+    return { ok: false, status: response.status, body: lastBody, models: [] };
   }
 
-  return { ok: false, status: lastStatus, response: null, body: lastBody };
+  // All candidates 404'd → discover what's actually live and try once more
+  const names = await fetchModelList(apiKey);
+  console.info('Aura-1 live model list:', names);
+  const found = pickBest(names);
+  if (found) {
+    const response = await generate(found, systemInstruction, userText, apiKey);
+    if (response.ok) {
+      cachedModel = found;
+      console.info(`Aura-1 engine online via discovered model: ${found}`);
+      return { ok: true, response };
+    }
+    lastStatus = response.status;
+    lastBody = await response.text().catch(() => '');
+  }
+
+  // Fail with the live list attached so we can see exactly what exists
+  return { ok: false, status: lastStatus, body: lastBody, models: names };
 }
 
-// ============================================================================
-// LIVE TRANSCRIPTION — Web Speech API (browser-native, free, zero services)
-// ============================================================================
+// ============ LIVE TRANSCRIPTION (browser-native, free) ============
 let recognitionInstance = null;
 let liveTranscriptBuffer = '';
 
 export function isLiveTranscriptionSupported() {
   return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 }
-
 export function startLiveTranscript(onUpdate) {
   stopLiveTranscript();
   liveTranscriptBuffer = '';
   const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   if (!SR) return false;
-
   try {
     const rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.lang = 'en-US';
+    rec.continuous = true; rec.interimResults = false; rec.lang = 'en-US';
     rec.onresult = (e) => {
       let chunk = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) chunk += e.results[i][0].transcript + ' ';
-      }
-      if (chunk) {
-        liveTranscriptBuffer += chunk;
-        if (onUpdate) onUpdate(liveTranscriptBuffer.trim());
-      }
+      for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) chunk += e.results[i][0].transcript + ' ';
+      if (chunk) { liveTranscriptBuffer += chunk; if (onUpdate) onUpdate(liveTranscriptBuffer.trim()); }
     };
     rec.onerror = (e) => console.warn('Live transcription error:', e?.error);
-    rec.start();
-    recognitionInstance = rec;
-    return true;
-  } catch (e) {
-    console.warn('Could not start live transcription:', e);
-    return false;
-  }
+    rec.start(); recognitionInstance = rec; return true;
+  } catch { return false; }
 }
-
 export function stopLiveTranscript() {
-  if (recognitionInstance) {
-    try { recognitionInstance.stop(); } catch (e) {}
-    recognitionInstance = null;
-  }
+  if (recognitionInstance) { try { recognitionInstance.stop(); } catch {} recognitionInstance = null; }
   return liveTranscriptBuffer.trim();
 }
-
 export function consumeLiveTranscript() {
-  const t = liveTranscriptBuffer.trim();
-  liveTranscriptBuffer = '';
-  return t;
+  const t = liveTranscriptBuffer.trim(); liveTranscriptBuffer = ''; return t;
 }
-
 export async function transcribeAudio() {
-  throw new Error('File transcription removed: use startLiveTranscript/consumeLiveTranscript during recording.');
+  throw new Error('Use live transcription helpers instead.');
 }
 
-/**
- * Sends text (or live-captured speech) to Aura-1 via Google Gemini.
- */
+// ============ MAIN ENTRY ============
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
   const apiKey = getGeminiApiKey();
-
-  if (!apiKey) {
-    return `[${botName} Alert]: Gemini API key not configured. Add VITE_GEMINI_API_KEY to .env.local (dev) and GitHub secret (deploy), then rebuild.`;
-  }
-
+  if (!apiKey) return `[${botName} Alert]: Gemini key missing. Set VITE_GEMINI_API_KEY in .env.local + GitHub secret, rebuild.`;
   if (userPrompt instanceof Blob || userPrompt instanceof File) {
-    return `[${botName} Alert]: Voice answers are transcribed live while you record. No speech text captured — please type your answer or re-record in Chrome/Edge.`;
+    return `[${botName} Alert]: Voice is transcribed live while recording. No text captured — please type your answer.`;
   }
 
   try {
@@ -176,29 +135,31 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
 
     const result = await Promise.race([
       callGemini(systemInstruction, userText, apiKey),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini request timed out')), 60000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 60000)),
     ]);
 
     if (!result.ok) {
-      console.error('Gemini API Error:', result.status, result.body);
-      const snippet = (result.body || '').slice(0, 200);
-      if (result.status === 400) return `[${botName} Alert]: Gemini rejected request (400). Raw: ${snippet}`;
-      if (result.status === 401 || result.status === 403) return `[${botName} Alert]: Gemini key rejected (${result.status}). Re-copy your active key from aistudio.google.com/apikey and update .env.local + GitHub secret.`;
-      if (result.status === 429) return `[${botName} Alert]: Gemini rate limit (429). Wait a moment — free tier: 15 req/min, 1,500/day.`;
-      if (result.status === 404) return `[${botName} Alert]: No working Gemini model found even after auto-discovery (404). Raw: ${snippet}`;
-      return `[${botName} Alert]: Gemini unavailable (code ${result.status}). Raw: ${snippet}`;
+      console.error('Gemini error:', result.status, result.body, 'live models:', result.models);
+      const snippet = (result.body || '').slice(0, 150);
+      if (result.status === 401 || result.status === 403)
+        return `[${botName} Alert]: Key rejected (${result.status}). Re-copy active key from aistudio.google.com/apikey → update .env.local + GitHub secret → rebuild.`;
+      if (result.status === 429)
+        return `[${botName} Alert]: Rate limit (429). Wait a moment — free tier 15 req/min.`;
+      if (result.status === 404) {
+        const list = (result.models || []).slice(0, 8).join(', ') || 'none returned';
+        return `[${botName} Alert]: 404. Google's live models for this key: [${list}]. Paste this list to Luna.`;
+      }
+      return `[${botName} Alert]: Gemini error ${result.status}. Raw: ${snippet}`;
     }
 
     const data = await result.response.json();
     const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
     if (aiText && typeof aiText === 'string') return aiText.trim();
     return `[${botName}]: Evaluation processed successfully.`;
   } catch (error) {
-    console.error("Aura-1 Gemini Error:", error);
-    if (error?.message?.includes('timed out')) return `[${botName} Alert]: Gemini took too long. Please resend.`;
-    if (error?.message?.includes('fetch')) return `[${botName} Alert]: Browser blocked connection to Gemini (network/CORS).`;
-    return `[${botName} Alert]: Connection to evaluation engine interrupted. Check your internet.`;
+    console.error('Aura-1 error:', error);
+    if (error?.message?.includes('timeout')) return `[${botName} Alert]: Gemini timed out. Resend.`;
+    return `[${botName} Alert]: Connection interrupted. Check internet.`;
   }
 }
 
