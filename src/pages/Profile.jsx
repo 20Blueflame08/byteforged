@@ -10,6 +10,9 @@ import {
   Medal, Star, FlaskConical
 } from 'lucide-react';
 
+// ============================================================================
+// EXPANDED AVATAR PRESETS — Zodiac, Elements, Specials & Originals
+// ============================================================================
 const AVATAR_CATEGORIES = [
   {
     name: 'Special Requests',
@@ -196,12 +199,22 @@ export default function Profile() {
     try {
       const saved = localStorage.getItem('byteforged_practical_progress');
       if (!saved) return 0;
-      const pp = JSON.parse(saved);
-      const completedStepsCount = Object.values(pp).reduce((acc, td) => acc + Object.values(td || {}).filter(Boolean).length, 0);
-      const totalStepsCount = Object.values(PRACTICAL_CONTENT).reduce((acc, t) => acc + (t?.steps?.length || 0), 0);
+      
+      const practiceProgress = JSON.parse(saved);
+      
+      const completedStepsCount = Object.values(practiceProgress).reduce((acc, topicData) => {
+        return acc + Object.values(topicData || {}).filter(Boolean).length;
+      }, 0);
+      
+      const totalStepsCount = Object.values(PRACTICAL_CONTENT).reduce((acc, topic) => {
+        return acc + (topic?.steps?.length || 0);
+      }, 0);
+      
       if (totalStepsCount === 0) return 0;
       return Math.round((completedStepsCount / totalStepsCount) * 100);
-    } catch { return 0; }
+    } catch {
+      return 0;
+    }
   }, []);
 
   const totalArcadeScore = useMemo(() => {
@@ -210,18 +223,53 @@ export default function Profile() {
       if (saved) {
         const parsed = JSON.parse(saved);
         const modeScores = parsed.modeScores || {};
-        return Object.values(modeScores).reduce((acc, s) => acc + (s || 0), 0);
+        return Object.values(modeScores).reduce((acc, score) => acc + (score || 0), 0);
       }
     } catch {}
     return 0;
   }, []);
 
   const BADGES = [
-    { id: 'b1', name: 'System Initialized', desc: 'Completed Operative Onboarding & System Setup', icon: '🚀', unlocked: isSystemInitialized, titleUnlocked: 'System Operator' },
-    { id: 'b2', name: 'Byte Master', desc: 'Achieved 100% unified progress on an active module', icon: '⚡', unlocked: Boolean(getUnifiedTopicProgress(activeTopicObj) === 100 || allTopicValues.some(t => getUnifiedTopicProgress(t) === 100)), titleUnlocked: 'Byte Master' },
-    { id: 'b4', name: 'Arcade Tactician', desc: 'Earn 15000+ total points across all Minigames modes', icon: '🎮', unlocked: totalArcadeScore >= 15000, titleUnlocked: 'Arcade Tactician' },
-    { id: 'lab-runner', name: 'Lab Runner', desc: 'Complete 80%+ of all Practical Lab exercises', icon: '🧪', unlocked: practiceLabCompletion >= 80, titleUnlocked: 'Lab Runner' },
-    { id: 'b6', name: 'Cyber Sentinel', desc: 'Earn Platinum Badge on system modules (80%+ unified progress)', icon: '🛡️', unlocked: isPlatinumUnlocked, titleUnlocked: 'Platinum Cyber Sentinel' },
+    { 
+      id: 'b1', 
+      name: 'System Initialized', 
+      desc: 'Completed Operative Onboarding & System Setup', 
+      icon: '🚀', 
+      unlocked: isSystemInitialized, 
+      titleUnlocked: 'System Operator' 
+    },
+    { 
+      id: 'b2', 
+      name: 'Byte Master', 
+      desc: 'Achieved 100% unified progress on an active module', 
+      icon: '⚡', 
+      unlocked: Boolean(getUnifiedTopicProgress(activeTopicObj) === 100 || allTopicValues.some(t => getUnifiedTopicProgress(t) === 100)), 
+      titleUnlocked: 'Byte Master' 
+    },
+    { 
+      id: 'b4', 
+      name: 'Arcade Tactician', 
+      desc: 'Earn 15000+ total points across all Minigames modes', 
+      icon: '🎮', 
+      unlocked: totalArcadeScore >= 15000, 
+      titleUnlocked: 'Arcade Tactician' 
+    },
+    { 
+      id: 'lab-runner', 
+      name: 'Lab Runner', 
+      desc: 'Complete 80%+ of all Practical Lab exercises', 
+      icon: '🧪', 
+      unlocked: practiceLabCompletion >= 80, 
+      titleUnlocked: 'Lab Runner' 
+    },
+    { 
+      id: 'b6', 
+      name: 'Cyber Sentinel', 
+      desc: 'Earn Platinum Badge on system modules (80%+ unified progress)', 
+      icon: '🛡️', 
+      unlocked: isPlatinumUnlocked, 
+      titleUnlocked: 'Platinum Cyber Sentinel' 
+    },
     { id: 'm-bronze', name: 'Bronze Progress Rank', desc: 'Achieve 40%+ unified progress on system modules', icon: '🥉', unlocked: isBronzeUnlocked, titleUnlocked: 'Bronze Operative' },
     { id: 'm-silver', name: 'Silver Progress Rank', desc: 'Achieve 50%+ unified progress (Pass Mark) on system modules', icon: '🥈', unlocked: isSilverUnlocked, titleUnlocked: 'Silver Specialist' },
     { id: 'm-gold', name: 'Gold Progress Rank', desc: 'Achieve 60%+ unified progress on system modules', icon: '🥇', unlocked: isGoldUnlocked, titleUnlocked: 'Gold Vanguard' },
@@ -231,69 +279,41 @@ export default function Profile() {
 
   const unlockedTitles = Array.from(new Set(['Cyber Initiate', ...BADGES.filter(b => b.unlocked && b.titleUnlocked).map(b => b.titleUnlocked)]));
 
-  // ============================================================================
-  // 🔧 HARDENED WRITE PATTERN: DB write → re-read confirmed row → sync store
-  // This is the fix for "avatar bleeds into FriendsHub" and "changes don't propagate".
-  // One source of truth: the DB row. The store only ever receives confirmed values.
-  // ============================================================================
-  const refreshOwnProfile = async () => {
-    if (!user?.id) return null;
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('username, bio, title, avatar, avatar_bg, is_pro')
-        .eq('id', user.id)
-        .single();
-      if (error) throw error;
-      if (data && updateProfile) {
-        updateProfile({
-          username: data.username,
-          bio: data.bio ?? '',
-          title: data.title || 'Cyber Initiate',
-          avatar: data.avatar,
-          avatarBg: data.avatar_bg,
-          isPro: !!data.is_pro,
-        });
-      }
-      return data;
-    } catch (err) {
-      console.warn('refreshOwnProfile failed (Supabase may be degraded):', err.message);
-      return null;
-    }
-  };
-
   const handleSaveUsername = async () => {
     sounds?.playClick?.();
     const trimmed = usernameInput.trim();
-    if (!trimmed || !user?.id) return;
+    if (!trimmed) return;
     try {
-      // 1. Write to DB (only OUR row)
-      const { error } = await supabase.from('profiles').update({ username: trimmed }).eq('id', user.id);
-      if (error) throw error;
-      // 2. Re-read confirmed row → push to store (FriendsHub sees this instantly)
-      await refreshOwnProfile();
+      if (updateProfile) await updateProfile({ username: trimmed });
+      if (user?.id) {
+        const { error } = await supabase.from('profiles').update({ username: trimmed }).eq('id', user.id);
+        if (error) throw error;
+      }
       setIsEditingUsername(false);
     } catch (err) {
       console.error('Failed to update username:', err);
-      alert('Could not save username right now — Supabase may be temporarily unavailable. Please retry in a moment.');
+      alert('Failed to update username: ' + err.message);
     }
   };
 
   const handleSaveBio = async () => {
     sounds?.playClick?.();
-    if (!user?.id) return;
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ bio: bioInput.trim(), title: selectedTitle })
-        .eq('id', user.id);
-      if (error) throw error;
-      await refreshOwnProfile();
-      setIsEditingBio(false);
-    } catch (err) {
-      console.error('Failed to save bio/title:', err);
-      alert('Could not save bio right now — Supabase may be temporarily unavailable. Please retry in a moment.');
+    if (updateProfile) {
+      updateProfile({ bio: bioInput.trim(), title: selectedTitle });
     }
+    if (user?.id) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ bio: bioInput.trim(), title: selectedTitle })
+          .eq('id', user.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Failed to save bio/title:', err);
+        alert('Failed to save bio/title: ' + err.message);
+      }
+    }
+    setIsEditingBio(false);
   };
 
   const handleSaveBot = () => {
@@ -310,22 +330,22 @@ export default function Profile() {
 
   const handleSelectAvatar = async (preset) => {
     sounds?.playClick?.();
-    if (!user?.id) return;
-    try {
-      // 1. Write ONLY our own row — explicit id guard prevents bleeding into other users
-      const { error } = await supabase
-        .from('profiles')
-        .update({ avatar: preset.icon, avatar_bg: preset.bg })
-        .eq('id', user.id);
-      if (error) throw error;
-      // 2. Re-read the confirmed row and sync the store.
-      //    FriendsHub subscribes to the same store → it now gets YOUR avatar for YOUR row only.
-      await refreshOwnProfile();
-      setShowAvatarPicker(false);
-    } catch (err) {
-      console.error('Failed to save avatar:', err);
-      alert('Could not save avatar right now — Supabase may be temporarily unavailable. Please retry in a moment.');
+    if (updateProfile) {
+      updateProfile({ avatar: preset.icon, avatarBg: preset.bg });
     }
+    if (user?.id) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ avatar: preset.icon, avatar_bg: preset.bg })
+          .eq('id', user.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Failed to save avatar:', err);
+        alert('Failed to save avatar: ' + err.message);
+      }
+    }
+    setShowAvatarPicker(false);
   };
 
   const handleVerifyDevCode = (e) => {
@@ -409,17 +429,20 @@ export default function Profile() {
   return (
     <div className="w-full max-w-[1400px] mx-auto p-4 sm:p-6 font-mono space-y-6 sm:space-y-8 animate-fadeIn min-h-screen relative">
       
+      {/* Indigo/Blue Background Glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[150px] animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-blue-500/8 rounded-full blur-[120px]" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-violet-400/5 rounded-full blur-[100px]" />
       </div>
 
+      {/* Profile Header Card */}
       <div className="p-5 sm:p-8 rounded-3xl bg-slate-900/40 border border-indigo-500/20 shadow-2xl shadow-indigo-500/10 backdrop-blur-2xl relative overflow-hidden">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-indigo-400/60 to-transparent" />
         
         <div className="flex flex-col gap-6 relative z-10">
           
+          {/* Top Section: Avatar & Identity */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-6">
             <div className="relative group self-start sm:self-auto">
               <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br ${userProfile?.avatarBg || 'from-indigo-500 to-blue-600'} flex items-center justify-center text-4xl sm:text-5xl shadow-xl border-2 border-indigo-400/60 shadow-indigo-500/20`}>
@@ -431,6 +454,7 @@ export default function Profile() {
             </div>
             
             <div className="flex-1 min-w-0 space-y-2">
+              {/* Username & Level */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                 {isEditingUsername ? (
                   <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -449,6 +473,7 @@ export default function Profile() {
                 )}
               </div>
 
+              {/* Title & Email */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                 <span className="text-xs sm:text-sm font-extrabold text-indigo-300 bg-indigo-500/10 border border-indigo-500/40 px-2.5 py-1 rounded-lg flex items-center gap-1.5 backdrop-blur-sm w-fit">
                   <Medal className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-400 flex-shrink-0" /> <span className="truncate max-w-[150px] sm:max-w-none">{selectedTitle}</span>
@@ -456,6 +481,7 @@ export default function Profile() {
                 <span className="text-xs sm:text-sm text-slate-300 font-medium break-all">{user?.email || 'operative@byteforged.io'}</span>
               </div>
 
+              {/* Bio */}
               <div className="pt-1">
                 {isEditingBio ? (
                   <div className="flex flex-col gap-3 w-full">
@@ -483,6 +509,7 @@ export default function Profile() {
             </div>
           </div>
 
+          {/* Action Buttons Row */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-2 border-t border-indigo-500/10">
             <button onClick={() => { sounds?.playClick?.(); setShowProModal(true); }} className={`flex-1 sm:flex-none px-3 sm:px-4 py-2.5 rounded-xl border font-black text-[10px] sm:text-xs transition flex items-center justify-center sm:justify-start gap-2 shadow-lg group ${isPro ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border-amber-500/50 text-amber-300 hover:border-amber-400'}`}>
               <Crown className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform flex-shrink-0" /> <span>{isPro ? 'PRO ACTIVE' : 'PRO CLEARANCE'}</span>
@@ -504,6 +531,7 @@ export default function Profile() {
         </div>
       </div>
 
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-slate-900/40 border border-indigo-500/20 space-y-2 shadow-lg shadow-indigo-500/5 backdrop-blur-2xl relative">
           <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-indigo-400/40 to-transparent" />
@@ -560,6 +588,7 @@ export default function Profile() {
         </div>
       </div>
 
+      {/* Badges Card */}
       <div className="p-5 sm:p-8 rounded-3xl bg-slate-900/40 border border-indigo-500/20 space-y-6 shadow-2xl shadow-indigo-500/10 backdrop-blur-2xl relative">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-indigo-400/60 to-transparent" />
         
@@ -598,9 +627,16 @@ export default function Profile() {
         </div>
       </div>
 
+      {/* ============================================================================ */}
+      {/* MODALS — All at root level, no nesting inside cards */}
+      {/* ============================================================================ */}
+
+      {/* Avatar Picker Modal — FIXED: No sticky header, no negative margins, clean groups */}
       {showAvatarPicker && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-2xl bg-slate-900 border border-indigo-500/40 rounded-3xl shadow-2xl shadow-indigo-500/20 flex flex-col max-h-[85vh] overflow-hidden">
+            
+            {/* Header — NOT sticky, just a normal flex-shrink-0 header */}
             <div className="flex justify-between items-center border-b border-indigo-500/20 px-5 py-4 bg-slate-900 flex-shrink-0">
               <h3 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-indigo-400" /> Select Operative Avatar
@@ -609,6 +645,8 @@ export default function Profile() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+            
+            {/* Scrollable Content — Clean padding, no overlap */}
             <div className="overflow-y-auto custom-scrollbar flex-1 p-5 space-y-6">
               {AVATAR_CATEGORIES.map((category) => (
                 <div key={category.name} className="space-y-3">
@@ -636,6 +674,7 @@ export default function Profile() {
         </div>
       )}
 
+      {/* PRO Modal */}
       {showProModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-md bg-slate-900/90 border border-amber-500/50 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl shadow-amber-500/20 relative backdrop-blur-2xl">
@@ -661,6 +700,7 @@ export default function Profile() {
         </div>
       )}
 
+      {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-lg bg-slate-900/90 border border-indigo-500/30 rounded-3xl p-5 sm:p-8 space-y-5 sm:space-y-6 shadow-2xl shadow-indigo-500/20 relative max-h-[90vh] overflow-y-auto backdrop-blur-2xl">
