@@ -1,4 +1,4 @@
-// src/lib/aura.js (Aura-1 AI Engine — X.AI Console Grok ONLY. No Puter anywhere.)
+// src/lib/aura.js (Aura-1 AI Engine — X.AI Console Grok direct API + graceful voice handling)
 
 /**
  * Safe getter for the X.AI API key — never crashes at module load.
@@ -13,7 +13,8 @@ function getXaiApiKey() {
 
 const XAI_API_URL = 'https://api.x.ai/v1/chat/completions';
 
-// Self-healing model chain: retired models are skipped automatically.
+// 🔧 Self-healing model chain: if Groq-style retirement happens here too,
+// Aura-1 walks the list and caches whichever model answers.
 const XAI_MODEL_CANDIDATES = [
   'grok-4-fast',
   'grok-4',
@@ -23,6 +24,9 @@ const XAI_MODEL_CANDIDATES = [
 
 let cachedModel = null;
 
+/**
+ * Calls the X.AI console API, walking the model chain on 404.
+ */
 async function callXai(messages, apiKey) {
   const ordered = cachedModel
     ? [cachedModel, ...XAI_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
@@ -37,7 +41,12 @@ async function callXai(messages, apiKey) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, messages, temperature: 0.6, max_tokens: 400 }),
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.6,
+        max_tokens: 400,
+      }),
     });
 
     if (response.ok) {
@@ -47,122 +56,102 @@ async function callXai(messages, apiKey) {
     }
 
     lastStatus = response.status;
-    if (response.status === 404) continue;
+    if (response.status === 404) continue; // retired/unknown model → try next
     return { ok: false, status: response.status, response };
   }
 
   return { ok: false, status: lastStatus, response: null };
 }
 
-// ============================================================================
-// LIVE TRANSCRIPTION — Web Speech API (free, browser-native, no Puter, no keys)
-// Captures words WHILE the user records. Team/role voice notes still send
-// audio blobs to Supabase as before — only Aura-1 evaluation uses the text.
-// ============================================================================
-let recognitionInstance = null;
-let liveTranscriptBuffer = '';
-
-export function isLiveTranscriptionSupported() {
-  return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+/**
+ * Loads Puter.js lazily — used ONLY for speech-to-text fallback, never for chat.
+ */
+function loadPuterScript() {
+  return new Promise((resolve, reject) => {
+    if (window.puter) { resolve(window.puter); return; }
+    const existingScript = document.querySelector('script[src="https://js.puter.com/v2/"]');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(window.puter));
+      existingScript.addEventListener('error', () => reject(new Error('Failed to load Puter.js SDK')));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://js.puter.com/v2/';
+    script.onload = () => resolve(window.puter);
+    script.onerror = () => reject(new Error('Failed to load Puter.js SDK'));
+    document.head.appendChild(script);
+  });
 }
 
 /**
- * Starts live speech capture. Call when recording starts.
- * @param {(text: string) => void} onUpdate - optional live preview callback
+ * Transcribes audio via Puter speech2txt (xAI provider).
+ * Throws on failure so the caller can degrade gracefully.
  */
-export function startLiveTranscript(onUpdate) {
-  stopLiveTranscript();
-  liveTranscriptBuffer = '';
-  const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
-  if (!SR) return false;
+export async function transcribeAudio(audioFile) {
+  const puter = await loadPuterScript();
 
   try {
-    const rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.lang = 'en-US';
-    rec.onresult = (e) => {
-      let chunk = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) chunk += e.results[i][0].transcript + ' ';
-      }
-      if (chunk) {
-        liveTranscriptBuffer += chunk;
-        if (onUpdate) onUpdate(liveTranscriptBuffer.trim());
-      }
-    };
-    rec.onerror = (e) => console.warn('Live transcription error:', e?.error);
-    rec.start();
-    recognitionInstance = rec;
-    return true;
+    const transcript = await puter.ai.speech2txt({
+      file: audioFile,
+      provider: 'xai',
+      language: 'en',
+      format: true,
+    });
+    if (typeof transcript === 'string') return transcript;
+    if (transcript?.text) return transcript.text;
   } catch (e) {
-    console.warn('Could not start live transcription:', e);
-    return false;
+    console.warn('xAI speech2txt (object form) failed, trying positional form:', e);
   }
+
+  const transcript = await puter.ai.speech2txt(audioFile, {
+    provider: 'xai',
+    language: 'en',
+    format: true,
+  });
+  if (typeof transcript === 'string') return transcript;
+  return transcript?.text || '';
 }
 
 /**
- * Stops live capture. Keeps the buffer until consumed.
- */
-export function stopLiveTranscript() {
-  if (recognitionInstance) {
-    try { recognitionInstance.stop(); } catch (e) {}
-    recognitionInstance = null;
-  }
-  return liveTranscriptBuffer.trim();
-}
-
-/**
- * Returns captured text and clears the buffer.
- */
-export function consumeLiveTranscript() {
-  const t = liveTranscriptBuffer.trim();
-  liveTranscriptBuffer = '';
-  return t;
-}
-
-/**
- * Legacy export kept so older imports don't break the build.
- * File-blob transcription is gone — voice is captured live during recording.
- */
-export async function transcribeAudio() {
-  throw new Error('File transcription removed: use startLiveTranscript/consumeLiveTranscript during recording.');
-}
-
-/**
- * Sends text to Aura-1 via X.AI Console Grok.
- * @param {string|Blob|File} userPrompt - text expected; blobs get a graceful guide message
- * @param {string} contextPrompt - current note/quiz context
- * @param {string} botName - custom bot handle
+ * Sends text or audio to Aura-1 via X.AI Console Grok.
+ * Your key, your quota (~1,440 req/month free tier) — no Puter involved in chat.
  */
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
   const apiKey = getXaiApiKey();
 
   if (!apiKey) {
-    return `[${botName} Alert]: X.AI API key not configured. Add VITE_XAI_API_KEY to .env.local (dev) and the GitHub Actions secret (deploy), then rebuild.`;
-  }
-
-  if (userPrompt instanceof Blob || userPrompt instanceof File) {
-    return `[${botName} Alert]: Voice answers are now transcribed live while you record. No speech text was captured for this note — please type your answer or re-record in Chrome/Edge.`;
+    return `[${botName} Alert]: X.AI API key not configured. Add VITE_XAI_API_KEY to .env.local (dev) and to the GitHub Actions secret (deploy), then rebuild.`;
   }
 
   try {
+    let finalInputText = userPrompt;
+
+    // Voice input → transcribe; degrade gracefully if unavailable
+    if (userPrompt instanceof Blob || userPrompt instanceof File) {
+      try {
+        finalInputText = await transcribeAudio(userPrompt);
+      } catch (e) {
+        console.warn('Voice transcription unavailable:', e);
+        return `[${botName} Alert]: Voice transcription is unavailable right now. Please type your answer instead — text evaluation works perfectly.`;
+      }
+      if (!finalInputText || !finalInputText.trim()) {
+        return `[${botName} Alert]: I couldn't understand that audio. Please re-record or type your answer.`;
+      }
+    }
+
     const systemInstruction = `You are ${botName}, an expert, witty, and direct CS & ICT AI evaluator for ByteForged Academy. Grade or answer the user's input accurately and concisely (under 100 words). Be encouraging but honest.`;
 
     const messages = [
       { role: 'system', content: systemInstruction },
-      { role: 'user', content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${userPrompt}` },
+      { role: 'user', content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}` },
     ];
 
-    const result = await Promise.race([
-      callXai(messages, apiKey),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('X.AI request timed out')), 90000)),
-    ]);
+    const result = await callXai(messages, apiKey);
 
     if (!result.ok) {
       console.error('X.AI API Error:', result.status);
       if (result.status === 401) return `[${botName} Alert]: X.AI key rejected (401). Regenerate the key in console.x.ai and update the secret + .env.local.`;
-      if (result.status === 429) return `[${botName} Alert]: Monthly quota reached (429). Your free X.AI allocation resets next cycle.`;
+      if (result.status === 429) return `[${botName} Alert]: Monthly quota reached (429). Your free X.AI tier resets next cycle — text me later or upgrade in console.x.ai.`;
       if (result.status === 404) return `[${botName} Alert]: No valid Grok model found (404). Update the model list in aura.js from console.x.ai/docs/models.`;
       return `[${botName} Alert]: Evaluation engine temporarily unavailable (code ${result.status}). Please try again in a moment.`;
     }
@@ -174,11 +163,9 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
     return `[${botName}]: Evaluation processed successfully.`;
   } catch (error) {
     console.error("Aura-1 X.AI Error:", error);
-    if (error?.message?.includes('timed out')) {
-      return `[${botName} Alert]: The evaluation engine took too long to respond. Please resend your message.`;
-    }
+    // "Failed to fetch" usually means network or CORS blocking the browser call
     if (error?.message?.includes('fetch')) {
-      return `[${botName} Alert]: Browser blocked the connection to api.x.ai (network/CORS). Tell Luna — we'll add a tiny proxy if needed.`;
+      return `[${botName} Alert]: Browser blocked the connection to api.x.ai (network/CORS). Tell Luna — we'll add a tiny proxy if X.AI restricts browser calls.`;
     }
     return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet and try again.`;
   }
