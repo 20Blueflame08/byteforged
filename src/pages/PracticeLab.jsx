@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { PRACTICAL_CONTENT } from '../data/practicalContent';
-import { askAura1Bot } from '../lib/aura';
+import { askAura1Bot, startLiveTranscript, stopLiveTranscript, consumeLiveTranscript } from '../lib/aura';
 import { useAppStore } from '../store/useAppStore';
 import { supabase } from '../lib/supabaseClient';
 import { Users, Mic, Send, Trash2, X, UserPlus, LogOut, Play, Pause, Volume2, VolumeX, ArrowDown, Square, Loader2, AlertTriangle } from 'lucide-react';
 
 const SELF_ROLES = ['Member', 'Leader', 'Contributor', 'Strategist', 'Reviewer'];
 const PLAYBACK_SPEEDS = [0.5, 1, 1.5, 2];
+
+// 🔧 Isolated namespace — no collisions with Home or Minigames
+const LAB_CHAT_TAB_KEY = 'byteforged_lab_chat_tab';
+const LAB_AURA_CHAT_KEY = (topicId) => `byteforged_lab_aura_chat_${topicId}`;
+const MAX_PERSISTED_MSGS = 60;
 
 // ============================================================================
 // CUSTOM AUDIO PLAYER — volume, speed, duration badge
@@ -148,16 +153,99 @@ export default function PracticeLab() {
     } catch (e) { console.error('Failed to parse progress from localStorage:', e); return {}; }
   });
 
-  const initialChatState = [{
-    sender: 'Aura-1', text: 'System online. I am Aura-1, your CS & ICT evaluator. Need help or code breakdown for this step?',
+  // 🔧 Get initial greeting (used only when no persisted data exists for a topic)
+  const getInitialGreeting = useCallback(() => [{
+    sender: 'Aura-1', avatar: '🤖',
+    text: 'System online. I am Aura-1, your CS & ICT evaluator. Need help or code breakdown for this step?',
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }];
-  const [chatMessages, setChatMessages] = useState(initialChatState);
+  }], []);
+
+  // Strip blob URLs from persisted messages (they die on reload)
+  const cleanMessages = useCallback((msgs) => {
+    if (!Array.isArray(msgs)) return [];
+    return msgs.map(m => {
+      if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
+        const { audioUrl, duration, ...rest } = m;
+        return rest;
+      }
+      return m;
+    });
+  }, []);
+
+  // 🔧 Aura messages persist per topic — ONLY cleared by manual clear or topic reset
+  const [chatMessages, setChatMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LAB_AURA_CHAT_KEY(selectedTopicId));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return cleanMessages(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load persisted Aura chat on mount:', e);
+    }
+    return getInitialGreeting();
+  });
+
+  // Reload persisted messages when topic changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LAB_AURA_CHAT_KEY(selectedTopicId));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages(cleanMessages(parsed));
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load persisted Aura chat for new topic:', e);
+    }
+    // Only reset to greeting if NO saved data exists for this topic
+    setChatMessages(getInitialGreeting());
+  }, [selectedTopicId, getInitialGreeting, cleanMessages]);
+
+  // Save messages to localStorage on change (strip blob URLs, cap length)
+  useEffect(() => {
+    try {
+      const clean = cleanMessages(chatMessages).slice(-MAX_PERSISTED_MSGS);
+      localStorage.setItem(LAB_AURA_CHAT_KEY(selectedTopicId), JSON.stringify(clean));
+    } catch (e) {
+      if (e.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded, truncating Aura chat history');
+        try {
+          const truncated = cleanMessages(chatMessages).slice(-30);
+          localStorage.setItem(LAB_AURA_CHAT_KEY(selectedTopicId), JSON.stringify(truncated));
+        } catch (e2) {
+          console.error('Failed to save even truncated chat:', e2);
+        }
+      } else {
+        console.warn('Failed to persist Aura chat:', e);
+      }
+    }
+  }, [chatMessages, selectedTopicId, cleanMessages]);
+
   const [userInputText, setUserInputText] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
 
-  const [chatTab, setChatTab] = useState(() => localStorage.getItem('byteforged_chat_tab') || 'aura');
-  useEffect(() => { localStorage.setItem('byteforged_chat_tab', chatTab); }, [chatTab]);
+  // 🔧 Isolated chat tab key — no collision with Home or Minigames
+  const [chatTab, setChatTab] = useState(() => {
+    try {
+      return localStorage.getItem(LAB_CHAT_TAB_KEY) || 'aura';
+    } catch (e) {
+      console.warn('Failed to load chat tab preference:', e);
+      return 'aura';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAB_CHAT_TAB_KEY, chatTab);
+    } catch (e) {
+      console.warn('Failed to save chat tab preference:', e);
+    }
+  }, [chatTab]);
   
   const [isTeamProfileOpen, setIsTeamProfileOpen] = useState(false);
   const [teamRoster, setTeamRoster] = useState([]);
@@ -177,9 +265,6 @@ export default function PracticeLab() {
   const chatBottomRef = useRef(null);
   const userJustSentRef = useRef(false);
 
-  // ============================================================================
-  // 🔧 FIX: isMountedRef — set to true on mount (StrictMode double-mount safe)
-  // ============================================================================
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -196,7 +281,7 @@ export default function PracticeLab() {
   }, []);
 
   // ============================================================================
-  // PURE VOICE RECORDING STATE — MediaRecorder only, NO speech-to-text
+  // VOICE RECORDING STATE + live transcript preview
   // ============================================================================
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -204,6 +289,7 @@ export default function PracticeLab() {
   const [pendingRecording, setPendingRecording] = useState(null);
   const [micError, setMicError] = useState('');
   const [isTtsEnabled, setIsTtsEnabled] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState('');
 
   const recordingDurationRef = useRef(0);
   const mediaRecorderRef = useRef(null);
@@ -341,9 +427,6 @@ export default function PracticeLab() {
     } catch (e) { console.error('Failed to save active location state:', e); }
   }, [selectedTopicId, currentStepIndex]);
 
-  // ============================================================================
-  // SMART AUTO-SCROLL
-  // ============================================================================
   const displayedMessages = chatTab === 'aura' ? chatMessages : teamChatMessages;
   const currentMsgCount = displayedMessages.length;
 
@@ -370,7 +453,6 @@ export default function PracticeLab() {
 
   useEffect(() => { setSelectedOption(null); setIsAnswerSubmitted(false); setShowHint(false); }, [selectedTopicId, currentStepIndex]);
   
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -399,7 +481,6 @@ export default function PracticeLab() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isAnswerSubmitted, selectedOption, activeStep, currentStepIndex, steps.length]);
 
-  // Auto-stop recording on tab blur / hide (safety)
   useEffect(() => {
     const handleBlur = () => { if (isRecordingRef.current) stopRecording(); };
     const handleVisibility = () => { if (document.hidden && isRecordingRef.current) stopRecording(); };
@@ -423,6 +504,7 @@ export default function PracticeLab() {
     }
   };
 
+  // 🔧 Topic reset clears persisted Aura chat for THIS topic (intentional)
   const handleResetActiveTopicProgress = () => {
     const topicTitle = activeTopic.title || selectedTopicId;
     if (!window.confirm(`Are you sure you want to reset all progress for "${topicTitle}"?`)) return;
@@ -431,6 +513,9 @@ export default function PracticeLab() {
     setCompletedSteps(updatedProgress);
     try { localStorage.setItem('byteforged_practical_progress', JSON.stringify(updatedProgress)); } catch (e) { console.error('Failed to reset topic progress:', e); }
     setSelectedOption(null); setIsAnswerSubmitted(false); setShowHint(false); setCurrentStepIndex(0);
+    // Clear persisted Aura chat for this topic
+    setChatMessages(getInitialGreeting());
+    try { localStorage.removeItem(LAB_AURA_CHAT_KEY(selectedTopicId)); } catch {}
   };
 
   const handleDeleteSingleMessage = (indexToDelete) => { setChatMessages((prev) => prev.filter((_, idx) => idx !== indexToDelete)); };
@@ -443,10 +528,11 @@ export default function PracticeLab() {
     } catch (err) { alert('Failed to delete: ' + err.message); }
   };
 
+  // 🔧 Manual clear — ONLY way to clear Aura chat besides topic reset
   const handleClearChat = () => {
     if (chatTab === 'aura') {
       if (window.confirm('Are you sure you want to delete all workspace messages?')) {
-        setChatMessages([{ sender: 'Aura-1', text: 'Workspace chat cleared. How can I assist you with this step?', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+        setChatMessages([{ sender: 'Aura-1', avatar: '🤖', text: 'Workspace chat cleared. How can I assist you with this step?', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
       }
     } else {
       if (window.confirm('Remove YOUR team messages from this lab chat?')) {
@@ -472,9 +558,6 @@ export default function PracticeLab() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // ============================================================================
-  // PURE VOICE RECORDING — granular error handling, StrictMode-safe
-  // ============================================================================
   const cleanupStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -488,6 +571,8 @@ export default function PracticeLab() {
         mediaRecorderRef.current.stop();
       }
     } catch (e) {}
+    // Stop live transcription capture
+    stopLiveTranscript();
     cleanupStream();
     clearInterval(recordingTimerRef.current);
     recordingTimerRef.current = null;
@@ -495,20 +580,16 @@ export default function PracticeLab() {
   };
 
   const toggleRecording = async () => {
-    // STOP path — use ref to avoid stale state
     if (isRecordingRef.current) {
       stopRecording();
       return;
     }
 
-    // Guard: don't start while pending preview exists
     if (pendingRecording) return;
 
-    // Clear errors + show loading
     setMicError('');
     setIsMicRequesting(true);
 
-    // Browser support check
     if (!navigator?.mediaDevices?.getUserMedia) {
       setMicError('Microphone not supported (requires HTTPS).');
       setIsMicRequesting(false);
@@ -520,7 +601,6 @@ export default function PracticeLab() {
       return;
     }
 
-    // Step 1: Get microphone stream (with timeout)
     let stream = null;
     try {
       stream = await Promise.race([
@@ -543,7 +623,6 @@ export default function PracticeLab() {
       return;
     }
 
-    // Step 2: Detect safe mime type
     let mimeType = '';
     const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/mpeg'];
     for (const c of candidates) {
@@ -552,7 +631,6 @@ export default function PracticeLab() {
       } catch {}
     }
 
-    // Step 3: Create MediaRecorder with MINIMAL options (no audioBitsPerSecond — breaks Safari)
     let mediaRecorder;
     try {
       const options = mimeType ? { mimeType } : {};
@@ -566,12 +644,10 @@ export default function PracticeLab() {
     }
     mediaRecorderRef.current = mediaRecorder;
 
-    // Step 4: Reset buffers + state
     audioChunksRef.current = [];
     recordingDurationRef.current = 0;
     setRecordingDuration(0);
 
-    // Step 5: Attach handlers
     mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
     };
@@ -603,7 +679,6 @@ export default function PracticeLab() {
       setMicError('Recording interrupted — tap mic to retry.');
     };
 
-    // Step 6: Start recording
     try {
       mediaRecorder.start(250);
     } catch (err) {
@@ -614,9 +689,11 @@ export default function PracticeLab() {
       return;
     }
 
-    // Step 7: All good — flip state, start timer
     setIsRecording(true);
     setIsMicRequesting(false);
+
+    // 🔧 Start live transcription alongside recording (for Aura eval)
+    startLiveTranscript((t) => setLiveTranscript(t));
 
     recordingTimerRef.current = setInterval(() => {
       recordingDurationRef.current += 1;
@@ -629,13 +706,13 @@ export default function PracticeLab() {
       try { URL.revokeObjectURL(pendingRecording.blobUrl); } catch (e) {}
     }
     setPendingRecording(null);
+    consumeLiveTranscript();
+    setLiveTranscript('');
     recordingDurationRef.current = 0;
     setRecordingDuration(0);
   };
 
-  // ============================================================================
-  // SEND PENDING RECORDING — unified for Aura-1 AND team
-  // ============================================================================
+  // 🔧 Send pending recording — Aura uses live transcript (not blob)
   const handleSendPendingRecording = async () => {
     if (!pendingRecording) return;
     const { blob, blobUrl, duration, target } = pendingRecording;
@@ -649,20 +726,33 @@ export default function PracticeLab() {
         id: Date.now().toString(), sender: currentUsername, avatar: currentUserAvatar,
         text: '🎙️ Voice Note', audioUrl: blobUrl, duration, time: timeStr
       }]);
+      const transcript = consumeLiveTranscript();
+      setLiveTranscript('');
       const contextPrompt = `Topic: ${activeTopic.title || ''} (${activeTopic.subtitle || ''})\nStep: ${activeStep.title || ''}\nInstruction: ${activeStep.instruction || ''}\nCode/Snippet:\n${activeStep.codeSnippet || 'None'}\nOptions: ${activeStep.options?.join(' | ') || 'N/A'}`;
       try {
         setIsAiThinking(true);
-        const aiReply = await askAura1Bot(blob, contextPrompt, 'Aura-1');
-        setChatMessages(prev => [...prev, {
-          sender: 'Aura-1', text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }]);
-        speakAuraResponse(aiReply);
+        if (transcript) {
+          const aiReply = await askAura1Bot(transcript, contextPrompt, 'Aura-1');
+          setChatMessages(prev => [...prev, {
+            sender: 'Aura-1', avatar: '🤖', text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }]);
+          speakAuraResponse(aiReply);
+        } else {
+          setChatMessages(prev => [...prev, {
+            sender: 'Aura-1', avatar: '🤖',
+            text: `[Aura-1 Alert]: I couldn't capture live speech text from that recording. Your voice note is saved above — please type your question so I can evaluate it.`,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }]);
+        }
       } catch (err) {
         setChatMessages(prev => [...prev, {
-          sender: 'Aura-1', text: '[Aura-1 Alert]: Query dispatch error.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          sender: 'Aura-1', avatar: '🤖', text: '[Aura-1 Alert]: Query dispatch error.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
       } finally { setIsAiThinking(false); }
     } else if (target === 'team' && myTeamId) {
+      // Team voice notes: audio blob → Supabase (untouched)
+      consumeLiveTranscript();
+      setLiveTranscript('');
       const audioUrl = await uploadVoiceNote(blob);
       try { URL.revokeObjectURL(blobUrl); } catch (e) {}
       if (audioUrl) {
@@ -694,12 +784,12 @@ export default function PracticeLab() {
         setIsAiThinking(true);
         const aiReply = await askAura1Bot(text, contextPrompt, 'Aura-1');
         setChatMessages(prev => [...prev, {
-          sender: 'Aura-1', text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          sender: 'Aura-1', avatar: '🤖', text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
         speakAuraResponse(aiReply);
       } catch (err) {
         setChatMessages(prev => [...prev, {
-          sender: 'Aura-1', text: '[Aura-1 Alert]: Query dispatch error.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          sender: 'Aura-1', avatar: '🤖', text: '[Aura-1 Alert]: Query dispatch error.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
       } finally { setIsAiThinking(false); }
     } else if (myTeamId) {
@@ -728,7 +818,6 @@ export default function PracticeLab() {
     return { topicPercentage: pct };
   }, [activeTopic, completedSteps, selectedTopicId]);
 
-  // Helper: what the mic button should show
   const micButtonDisabled = !!pendingRecording || isMicRequesting;
   const micButtonTitle = isRecording
     ? 'Stop Recording'
@@ -929,7 +1018,7 @@ export default function PracticeLab() {
 
           {chatTab === 'aura' && (
             <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-2 scrollbar-none">
-              <button onClick={() => { userJustSentRef.current = true; handleSendText(); setUserInputText('Explain this practical step in simple terms.'); setTimeout(() => handleSendText(), 0); }} disabled={isAiThinking} className="px-3 py-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-800 text-[11px] font-mono text-slate-200 whitespace-nowrap border border-slate-700 transition backdrop-blur-sm flex-shrink-0">❓ Explain Step</button>
+              <button onClick={() => { userJustSentRef.current = true; setUserInputText('Explain this practical step in simple terms.'); setTimeout(() => handleSendText(), 0); }} disabled={isAiThinking} className="px-3 py-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-800 text-[11px] font-mono text-slate-200 whitespace-nowrap border border-slate-700 transition backdrop-blur-sm flex-shrink-0">❓ Explain Step</button>
               <button onClick={() => { userJustSentRef.current = true; setUserInputText('Why is the correct option right?'); setTimeout(() => handleSendText(), 0); }} disabled={isAiThinking} className="px-3 py-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-800 text-[11px] font-mono text-slate-200 whitespace-nowrap border border-slate-700 transition backdrop-blur-sm flex-shrink-0"> Deep Dive</button>
             </div>
           )}
@@ -972,7 +1061,6 @@ export default function PracticeLab() {
             <div ref={chatBottomRef} />
           </div>
 
-          {/* NEW MESSAGES PILL */}
           {hasNewMessages && !isNearBottom && (
             <button
               onClick={jumpToBottom}
@@ -984,7 +1072,7 @@ export default function PracticeLab() {
           )}
 
           <div className="space-y-3 pt-3 border-t border-slate-800 mt-2">
-            {/* LIVE RECORDING INDICATOR — timer only, no transcription */}
+            {/* LIVE RECORDING INDICATOR — with live transcript preview */}
             {isRecording && (
               <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-3 backdrop-blur-sm">
                 <div className="flex items-center justify-between text-xs font-mono text-red-300">
@@ -994,10 +1082,12 @@ export default function PracticeLab() {
                   </div>
                   <span className="text-[10px] text-red-400 italic">Tap mic again to stop</span>
                 </div>
+                {liveTranscript && (
+                  <div className="mt-2 text-[10px] text-emerald-200/90 font-mono italic truncate">📝 {liveTranscript}</div>
+                )}
               </div>
             )}
 
-            {/* MIC ERROR — visible feedback */}
             {micError && (
               <div className="bg-rose-500/15 border border-rose-500/40 rounded-xl p-2.5 text-[11px] font-mono text-rose-300 flex items-center space-x-2 backdrop-blur-sm">
                 <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -1006,7 +1096,6 @@ export default function PracticeLab() {
               </div>
             )}
 
-            {/* PENDING RECORDING PREVIEW */}
             {pendingRecording && (
               <div className={`${chatTab === 'aura' ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-purple-500/10 border-purple-500/40'} border rounded-xl p-3 space-y-2 backdrop-blur-sm`}>
                 <div className="flex justify-between items-center text-[10px] font-mono text-emerald-300 font-extrabold uppercase tracking-wider gap-2">
@@ -1070,10 +1159,8 @@ export default function PracticeLab() {
       {/* TEAM PROFILE MODAL — Frosted Glass (Mobile Fixed: Stacked Layout) */}
       {isTeamProfileOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          {/* Added overflow-x-hidden to guarantee nothing breaks out horizontally */}
           <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-5 md:p-9 max-w-2xl w-full space-y-6 shadow-2xl shadow-purple-500/20 backdrop-blur-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden relative">
             
-            {/* Sticky Header */}
             <div className="flex justify-between items-center border-b border-slate-700 pb-4 sticky top-0 bg-slate-900/95 backdrop-blur-md z-10 -mx-5 px-5 md:-mx-9 md:px-9 pt-1">
               <h3 className="text-lg md:text-xl font-black text-white flex items-center gap-3">
                 <Users className="w-5 h-5 md:w-6 md:h-6 text-purple-400 flex-shrink-0" /> 
@@ -1083,7 +1170,6 @@ export default function PracticeLab() {
             </div>
 
             <div className="space-y-5">
-              {/* Team Name Input */}
               <div>
                 <label className="block text-xs text-slate-400 font-black uppercase tracking-widest mb-2">Custom Team Name</label>
                 <input 
@@ -1094,7 +1180,6 @@ export default function PracticeLab() {
                 />
               </div>
 
-              {/* Roster List */}
               <div className="space-y-3">
                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Live Roster & Self-Selected Roles</h4>
                 <div className="max-h-64 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
@@ -1104,10 +1189,8 @@ export default function PracticeLab() {
                     sortedRoster.map((m, idx) => {
                       const isMe = m.id === user?.id;
                       return (
-                        // Changed to flex-col always on mobile to prevent horizontal overflow
                         <div key={m.id} className="flex flex-col gap-4 p-4 bg-slate-900/60 border border-slate-700 rounded-xl text-xs font-bold shadow-md backdrop-blur-sm">
                           
-                          {/* Top Row: Avatar & Name */}
                           <div className="flex items-center gap-3 min-w-0">
                             <span className="font-mono text-slate-500 text-sm flex-shrink-0 w-4 text-center">{idx + 1}</span>
                             <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center text-xl border border-slate-700 flex-shrink-0">
@@ -1127,7 +1210,6 @@ export default function PracticeLab() {
                             </div>
                           </div>
                           
-                          {/* Bottom Row: Controls (Stacked neatly below on mobile) */}
                           {isMe && (
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full pl-7">
                               <select 
@@ -1153,7 +1235,6 @@ export default function PracticeLab() {
               </div>
             </div>
 
-            {/* Sticky Footer */}
             <div className="pt-4 border-t border-slate-700 flex flex-col sm:flex-row gap-3 sticky bottom-0 bg-slate-900/95 backdrop-blur-md -mx-5 px-5 md:-mx-9 md:px-9 pb-1">
               <button 
                 onClick={() => { setIsTeamProfileOpen(false); useAppStore.getState().setActiveTab('friends'); }} 
