@@ -13,9 +13,6 @@ const LAB_CHAT_TAB_KEY = 'byteforged_lab_chat_tab';
 const LAB_AURA_CHAT_KEY = (topicId) => `byteforged_lab_aura_chat_${topicId}`;
 const MAX_PERSISTED_MSGS = 60;
 
-// ============================================================================
-// CUSTOM AUDIO PLAYER — volume, speed, duration badge
-// ============================================================================
 function AudioPlayer({ src, initialDuration = 0, theme = 'emerald' }) {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -153,14 +150,10 @@ export default function PracticeLab() {
     } catch (e) { console.error('Failed to parse progress from localStorage:', e); return {}; }
   });
 
-  // 🔧 Get initial greeting (used only when no persisted data exists for a topic)
-  const getInitialGreeting = useCallback(() => [{
-    sender: 'Aura-1', avatar: '🤖',
-    text: 'System online. I am Aura-1, your CS & ICT evaluator. Need help or code breakdown for this step?',
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }], []);
-
-  // Strip blob URLs from persisted messages (they die on reload)
+  // 🔧 FIXED: Start empty, load in useEffect after selectedTopicId is stable
+  const [chatMessages, setChatMessages] = useState([]);
+  
+  // Helper: strip dead blob URLs from persisted messages
   const cleanMessages = useCallback((msgs) => {
     if (!Array.isArray(msgs)) return [];
     return msgs.map(m => {
@@ -171,60 +164,6 @@ export default function PracticeLab() {
       return m;
     });
   }, []);
-
-  // 🔧 Aura messages persist per topic — ONLY cleared by manual clear or topic reset
-  const [chatMessages, setChatMessages] = useState(() => {
-    try {
-      const saved = localStorage.getItem(LAB_AURA_CHAT_KEY(selectedTopicId));
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return cleanMessages(parsed);
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load persisted Aura chat on mount:', e);
-    }
-    return getInitialGreeting();
-  });
-
-  // Reload persisted messages when topic changes
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(LAB_AURA_CHAT_KEY(selectedTopicId));
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setChatMessages(cleanMessages(parsed));
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load persisted Aura chat for new topic:', e);
-    }
-    // Only reset to greeting if NO saved data exists for this topic
-    setChatMessages(getInitialGreeting());
-  }, [selectedTopicId, getInitialGreeting, cleanMessages]);
-
-  // Save messages to localStorage on change (strip blob URLs, cap length)
-  useEffect(() => {
-    try {
-      const clean = cleanMessages(chatMessages).slice(-MAX_PERSISTED_MSGS);
-      localStorage.setItem(LAB_AURA_CHAT_KEY(selectedTopicId), JSON.stringify(clean));
-    } catch (e) {
-      if (e.name === 'QuotaExceededError') {
-        console.warn('localStorage quota exceeded, truncating Aura chat history');
-        try {
-          const truncated = cleanMessages(chatMessages).slice(-30);
-          localStorage.setItem(LAB_AURA_CHAT_KEY(selectedTopicId), JSON.stringify(truncated));
-        } catch (e2) {
-          console.error('Failed to save even truncated chat:', e2);
-        }
-      } else {
-        console.warn('Failed to persist Aura chat:', e);
-      }
-    }
-  }, [chatMessages, selectedTopicId, cleanMessages]);
 
   const [userInputText, setUserInputText] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
@@ -255,9 +194,6 @@ export default function PracticeLab() {
   const [teamChatMessages, setTeamChatMessages] = useState([]);
   const realtimeChannelRef = useRef(null);
 
-  // ============================================================================
-  // SMART AUTO-SCROLL STATE
-  // ============================================================================
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const [prevMsgCount, setPrevMsgCount] = useState(0);
@@ -280,15 +216,11 @@ export default function PracticeLab() {
     if (nearBottom) setHasNewMessages(false);
   }, []);
 
-  // ============================================================================
-  // VOICE RECORDING STATE + live transcript preview
-  // ============================================================================
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isMicRequesting, setIsMicRequesting] = useState(false);
   const [pendingRecording, setPendingRecording] = useState(null);
   const [micError, setMicError] = useState('');
-  const [isTtsEnabled, setIsTtsEnabled] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState('');
 
   const recordingDurationRef = useRef(0);
@@ -299,6 +231,59 @@ export default function PracticeLab() {
   const isRecordingRef = useRef(false);
 
   useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+
+  // ============================================================================
+  // 🔧 BULLETPROOF CHAT PERSISTENCE
+  // ============================================================================
+  
+  // LOAD: Runs once on mount AND whenever topic changes.
+  // Never wipes existing messages — just loads what's saved.
+  // If nothing saved, adds the greeting only if chat is currently empty.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LAB_AURA_CHAT_KEY(selectedTopicId));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages(cleanMessages(parsed));
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load persisted Aura chat:', e);
+    }
+    // Nothing saved for this topic — seed greeting ONLY if chat is empty
+    setChatMessages(prev => {
+      if (prev.length > 0) return prev;
+      return [{
+        sender: 'Aura-1', avatar: '🤖',
+        text: 'System online. I am Aura-1, your CS & ICT evaluator. Need help or code breakdown for this step?',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }];
+    });
+  }, [selectedTopicId, cleanMessages]);
+
+  // SAVE: Runs whenever messages or topic changes.
+  // NEVER overwrites with empty data — that was the wipe-on-reload bug.
+  useEffect(() => {
+    if (!chatMessages || chatMessages.length === 0) return; // 🔑 CRITICAL: never save empty
+    try {
+      const clean = cleanMessages(chatMessages).slice(-MAX_PERSISTED_MSGS);
+      localStorage.setItem(LAB_AURA_CHAT_KEY(selectedTopicId), JSON.stringify(clean));
+    } catch (e) {
+      if (e.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded, truncating');
+        try {
+          const truncated = cleanMessages(chatMessages).slice(-30);
+          localStorage.setItem(LAB_AURA_CHAT_KEY(selectedTopicId), JSON.stringify(truncated));
+        } catch (e2) {
+          console.error('Failed to save even truncated:', e2);
+        }
+      } else {
+        console.warn('Failed to persist Aura chat:', e);
+      }
+    }
+  }, [chatMessages, selectedTopicId, cleanMessages]);
 
   const syncRosterFromDB = async () => {
     if (!user?.id) return;
@@ -460,7 +445,6 @@ export default function PracticeLab() {
       }
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     };
   }, []);
 
@@ -504,17 +488,21 @@ export default function PracticeLab() {
     }
   };
 
-  // 🔧 Topic reset clears persisted Aura chat for THIS topic (intentional)
+  // 🔧 Topic reset: clears persisted chat + progress for THIS topic
   const handleResetActiveTopicProgress = () => {
     const topicTitle = activeTopic.title || selectedTopicId;
     if (!window.confirm(`Are you sure you want to reset all progress for "${topicTitle}"?`)) return;
     const updatedProgress = { ...completedSteps };
     delete updatedProgress[selectedTopicId];
     setCompletedSteps(updatedProgress);
-    try { localStorage.setItem('byteforged_practical_progress', JSON.stringify(updatedProgress)); } catch (e) { console.error('Failed to reset topic progress:', e); }
+    try { localStorage.setItem('byteforged_practical_progress', JSON.stringify(updatedProgress)); } catch (e) {}
     setSelectedOption(null); setIsAnswerSubmitted(false); setShowHint(false); setCurrentStepIndex(0);
-    // Clear persisted Aura chat for this topic
-    setChatMessages(getInitialGreeting());
+    // Clear chat for this topic — intentional reset
+    setChatMessages([{
+      sender: 'Aura-1', avatar: '🤖',
+      text: `Topic reset. Ready to help with ${topicTitle}.`,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
     try { localStorage.removeItem(LAB_AURA_CHAT_KEY(selectedTopicId)); } catch {}
   };
 
@@ -549,15 +537,6 @@ export default function PracticeLab() {
     return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // TTS PRESERVED
-  const speakAuraResponse = (text) => {
-    if (!isTtsEnabled || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0; utterance.pitch = 1.0;
-    window.speechSynthesis.speak(utterance);
-  };
-
   const cleanupStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -571,7 +550,6 @@ export default function PracticeLab() {
         mediaRecorderRef.current.stop();
       }
     } catch (e) {}
-    // Stop live transcription capture
     stopLiveTranscript();
     cleanupStream();
     clearInterval(recordingTimerRef.current);
@@ -584,12 +562,9 @@ export default function PracticeLab() {
       stopRecording();
       return;
     }
-
     if (pendingRecording) return;
-
     setMicError('');
     setIsMicRequesting(true);
-
     if (!navigator?.mediaDevices?.getUserMedia) {
       setMicError('Microphone not supported (requires HTTPS).');
       setIsMicRequesting(false);
@@ -600,7 +575,6 @@ export default function PracticeLab() {
       setIsMicRequesting(false);
       return;
     }
-
     let stream = null;
     try {
       stream = await Promise.race([
@@ -622,7 +596,6 @@ export default function PracticeLab() {
       }
       return;
     }
-
     let mimeType = '';
     const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/mpeg'];
     for (const c of candidates) {
@@ -630,7 +603,6 @@ export default function PracticeLab() {
         if (MediaRecorder.isTypeSupported(c)) { mimeType = c; break; }
       } catch {}
     }
-
     let mediaRecorder;
     try {
       const options = mimeType ? { mimeType } : {};
@@ -643,33 +615,23 @@ export default function PracticeLab() {
       return;
     }
     mediaRecorderRef.current = mediaRecorder;
-
     audioChunksRef.current = [];
     recordingDurationRef.current = 0;
     setRecordingDuration(0);
-
     mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
     };
-
     mediaRecorder.onstop = () => {
       const duration = recordingDurationRef.current;
       const blob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
       cleanupStream();
-
       if (blob.size > 0) {
-        setPendingRecording({
-          blob,
-          blobUrl: URL.createObjectURL(blob),
-          duration,
-          target: chatTab
-        });
+        setPendingRecording({ blob, blobUrl: URL.createObjectURL(blob), duration, target: chatTab });
       } else {
         setMicError('Recording came back empty — tap mic to try again.');
       }
       setIsRecording(false);
     };
-
     mediaRecorder.onerror = (err) => {
       console.error('MediaRecorder error:', err);
       cleanupStream();
@@ -678,7 +640,6 @@ export default function PracticeLab() {
       setIsRecording(false);
       setMicError('Recording interrupted — tap mic to retry.');
     };
-
     try {
       mediaRecorder.start(250);
     } catch (err) {
@@ -688,13 +649,9 @@ export default function PracticeLab() {
       setMicError(`Could not start recorder: ${err?.message || 'format error'}`);
       return;
     }
-
     setIsRecording(true);
     setIsMicRequesting(false);
-
-    // 🔧 Start live transcription alongside recording (for Aura eval)
     startLiveTranscript((t) => setLiveTranscript(t));
-
     recordingTimerRef.current = setInterval(() => {
       recordingDurationRef.current += 1;
       setRecordingDuration(recordingDurationRef.current);
@@ -712,11 +669,9 @@ export default function PracticeLab() {
     setRecordingDuration(0);
   };
 
-  // 🔧 Send pending recording — Aura uses live transcript (not blob)
   const handleSendPendingRecording = async () => {
     if (!pendingRecording) return;
     const { blob, blobUrl, duration, target } = pendingRecording;
-    
     setPendingRecording(null);
     userJustSentRef.current = true;
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -736,7 +691,6 @@ export default function PracticeLab() {
           setChatMessages(prev => [...prev, {
             sender: 'Aura-1', avatar: '🤖', text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }]);
-          speakAuraResponse(aiReply);
         } else {
           setChatMessages(prev => [...prev, {
             sender: 'Aura-1', avatar: '🤖',
@@ -750,7 +704,6 @@ export default function PracticeLab() {
         }]);
       } finally { setIsAiThinking(false); }
     } else if (target === 'team' && myTeamId) {
-      // Team voice notes: audio blob → Supabase (untouched)
       consumeLiveTranscript();
       setLiveTranscript('');
       const audioUrl = await uploadVoiceNote(blob);
@@ -786,7 +739,6 @@ export default function PracticeLab() {
         setChatMessages(prev => [...prev, {
           sender: 'Aura-1', avatar: '🤖', text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
-        speakAuraResponse(aiReply);
       } catch (err) {
         setChatMessages(prev => [...prev, {
           sender: 'Aura-1', avatar: '🤖', text: '[Aura-1 Alert]: Query dispatch error.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -830,14 +782,12 @@ export default function PracticeLab() {
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-8 font-sans text-slate-100 space-y-7 min-h-screen relative selection:bg-emerald-500 selection:text-slate-950">
       
-      {/* Emerald Background Glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[150px] animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-teal-400/8 rounded-full blur-[120px]" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-lime-400/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* LAB HEADER — Frosted Glass (Mobile Optimized) */}
       <div className="bg-slate-900/40 border border-emerald-500/20 rounded-3xl p-5 md:p-7 flex flex-col gap-6 shadow-2xl shadow-emerald-500/10 backdrop-blur-2xl relative">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent" />
         
@@ -875,7 +825,6 @@ export default function PracticeLab() {
         </div>
       </div>
 
-      {/* TOPIC SELECTOR TABS — Frosted */}
       <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-800">
         {topicKeys.map((key) => {
           const item = PRACTICAL_CONTENT[key];
@@ -890,10 +839,8 @@ export default function PracticeLab() {
         })}
       </div>
 
-      {/* DUAL-PANE LAB WORKSPACE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
         
-        {/* LEFT PANE — Frosted Glass */}
         <div className="lg:col-span-7 xl:col-span-8 bg-slate-900/40 border border-emerald-500/20 rounded-3xl p-5 md:p-7 space-y-6 shadow-2xl shadow-emerald-500/10 backdrop-blur-2xl relative">
           <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent" />
           
@@ -994,7 +941,6 @@ export default function PracticeLab() {
           </div>
         </div>
 
-        {/* RIGHT PANE: CHAT WORKSPACE — Frosted Glass */}
         <div className="lg:col-span-5 xl:col-span-4 bg-slate-900/40 border border-emerald-500/20 rounded-3xl p-4 md:p-6 flex flex-col h-[600px] lg:h-[680px] shadow-2xl shadow-emerald-500/10 backdrop-blur-2xl relative">
           <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent" />
           
@@ -1005,14 +951,8 @@ export default function PracticeLab() {
             )}
           </div>
 
-          <div className="flex items-center justify-between mb-3.5 gap-2">
-            <div className="flex items-center gap-2">
-              {chatTab === 'aura' && (
-                <button onClick={() => { if (isTtsEnabled) window.speechSynthesis?.cancel(); setIsTtsEnabled(!isTtsEnabled); }} title={isTtsEnabled ? 'Disable Aura Voice Output' : 'Enable Aura Voice Output'} className={`px-2 py-1 text-[11px] font-mono font-bold rounded-lg border transition flex items-center gap-1 backdrop-blur-sm ${isTtsEnabled ? 'bg-emerald-950 text-emerald-300 border-emerald-500/80 shadow-sm' : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200'}`}>
-                  <span>{isTtsEnabled ? '🔊 Audio' : '🔇 Mute'}</span>
-                </button>
-              )}
-            </div>
+          {/* 🔧 TTS toggle removed — cleaner header */}
+          <div className="flex items-center justify-end mb-3.5 gap-2">
             <button onClick={handleClearChat} title="Clear Chat History" className="px-2 py-1 text-[11px] font-mono font-bold rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/70 transition flex items-center gap-1 active:scale-95 backdrop-blur-sm whitespace-nowrap"><span>Clear All</span></button>
           </div>
 
@@ -1072,7 +1012,6 @@ export default function PracticeLab() {
           )}
 
           <div className="space-y-3 pt-3 border-t border-slate-800 mt-2">
-            {/* LIVE RECORDING INDICATOR — with live transcript preview */}
             {isRecording && (
               <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-3 backdrop-blur-sm">
                 <div className="flex items-center justify-between text-xs font-mono text-red-300">
@@ -1156,7 +1095,6 @@ export default function PracticeLab() {
         </div>
       </div>
 
-      {/* TEAM PROFILE MODAL — Frosted Glass (Mobile Fixed: Stacked Layout) */}
       {isTeamProfileOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-5 md:p-9 max-w-2xl w-full space-y-6 shadow-2xl shadow-purple-500/20 backdrop-blur-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden relative">
@@ -1190,7 +1128,6 @@ export default function PracticeLab() {
                       const isMe = m.id === user?.id;
                       return (
                         <div key={m.id} className="flex flex-col gap-4 p-4 bg-slate-900/60 border border-slate-700 rounded-xl text-xs font-bold shadow-md backdrop-blur-sm">
-                          
                           <div className="flex items-center gap-3 min-w-0">
                             <span className="font-mono text-slate-500 text-sm flex-shrink-0 w-4 text-center">{idx + 1}</span>
                             <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center text-xl border border-slate-700 flex-shrink-0">
