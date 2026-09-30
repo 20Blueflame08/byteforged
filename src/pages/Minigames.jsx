@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import { MINIGAMES_CONTENT } from '../data/minigamesContent';
 import { sounds } from '../lib/soundEngine';
 import { supabase } from '../lib/supabaseClient';
+import { askAura1Bot, startLiveTranscript, stopLiveTranscript, consumeLiveTranscript } from '../lib/aura';
 import {
   Gamepad2, Trophy, Flame, Users, Shield, HelpCircle, RefreshCw,
   Share2, UserPlus, Send, Mic, ChevronDown, ChevronUp,
@@ -12,6 +13,11 @@ import {
 
 const STORAGE_KEY = 'byteforged_minigames_state_final_v12';
 const PERFECT_GAME_SCORE = 115;
+
+// 🔧 Isolated namespace — no collisions with Home or PracticeLab
+const MINI_CHAT_TARGET_KEY = 'byteforged_mini_chat_target';
+const MINI_BOT_CHAT_KEY = (topic) => `byteforged_mini_bot_chat_${topic}`;
+const MAX_PERSISTED_MSGS = 60;
 
 const SELF_ROLES = ['Member', 'Leader'];
 const SELF_COLORS = ['BlueTeam', 'RedTeam', 'YellowTeam', 'GreenTeam', 'PurpleTeam', 'OrangeTeam'];
@@ -34,51 +40,6 @@ const loadSavedState = (key, fallback) => {
   return fallback;
 };
 
-function loadPuterScript() {
-  return new Promise((resolve, reject) => {
-    if (window.puter) { resolve(window.puter); return; }
-    const existingScript = document.querySelector('script[src="https://js.puter.com/v2/"]');
-    if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(window.puter));
-      existingScript.addEventListener('error', (err) => reject(err));
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://js.puter.com/v2/';
-    script.onload = () => resolve(window.puter);
-    script.onerror = (err) => reject(new Error('Failed to load Puter.js SDK'));
-    document.head.appendChild(script);
-  });
-}
-
-async function transcribeAudio(audioFile) {
-  try {
-    const puter = await loadPuterScript();
-    const transcript = await puter.ai.speech2txt(audioFile, { model: "gpt-4o-mini-transcribe" });
-    return transcript?.text || transcript || "";
-  } catch (error) { throw new Error("Failed to transcribe audio input."); }
-}
-
-async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
-  try {
-    const puter = await loadPuterScript();
-    let finalInputText = userPrompt;
-    if (userPrompt instanceof Blob || userPrompt instanceof File) {
-      finalInputText = await transcribeAudio(userPrompt);
-    }
-    const systemInstruction = `You are ${botName}, an expert, witty CS & ICT AI evaluator. Grade/answer concisely (under 100 words).`;
-    const fullPrompt = `${systemInstruction}\n\n[CONTEXT]: ${contextPrompt}\n\n[INPUT]: ${finalInputText}`;
-    const response = await puter.ai.chat(fullPrompt, { model: "qwen/qwen3.5-flash-02-23", temperature: 0.6 });
-    if (typeof response === 'string') return response;
-    if (response?.message?.content) return response.message.content;
-    if (response?.text) return response.text;
-    return `[${botName}]: Evaluation processed.`;
-  } catch (error) { return `[${botName} Alert]: Connection error.`; }
-}
-
-// ============================================================================
-// CUSTOM AUDIO PLAYER — volume, speed, duration badge (theme-aware)
-// ============================================================================
 function AudioPlayer({ src, initialDuration = 0, theme = 'amber' }) {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -178,9 +139,6 @@ function AudioPlayer({ src, initialDuration = 0, theme = 'amber' }) {
   );
 }
 
-/* ============================================================================
-   GAME ENGINES (unchanged)
-   ============================================================================ */
 const MatchingPairGame = ({ data, onFullyCompleted }) => {
   const [selectedKey, setSelectedKey] = useState(null);
   const [matches, setMatches] = useState({});
@@ -452,9 +410,6 @@ const InputSolverGame = ({ data, onFullyCompleted }) => {
   );
 };
 
-/* ============================================================================
-   MAIN MINIGAMES COMPONENT
-   ============================================================================ */
 export default function Minigames() {
   const { setActiveTab, user, userProfile, botName } = useAppStore();
 
@@ -507,12 +462,39 @@ export default function Minigames() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
-  // Chat target: solo = forced Aura-1, team = persistent via localStorage
-  const [chatTarget, setChatTarget] = useState(() => loadSavedState('chatTarget', 'Aura-1 AI'));
-  const [botChatMessages, setBotChatMessages] = useState(() => loadSavedState('botChatMessages', [
-    { id: 'm1', sender: 'Aura-1 AI', text: 'Welcome back to the Cyber Arcade. Continuing exactly where you left off!', time: '10:00 AM' }
-  ]));
+  // 🔧 Isolated chat target key — no collision with Home or PracticeLab
+  const [chatTarget, setChatTarget] = useState(() => {
+    try {
+      return localStorage.getItem(MINI_CHAT_TARGET_KEY) || 'Aura-1 AI';
+    } catch (e) {
+      console.warn('Failed to load chat target preference:', e);
+      return 'Aura-1 AI';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MINI_CHAT_TARGET_KEY, chatTarget);
+    } catch (e) {
+      console.warn('Failed to save chat target preference:', e);
+    }
+  }, [chatTarget]);
+
+  // 🔧 FIXED: Start empty, load in useEffect after activeTopic is stable
+  const [botChatMessages, setBotChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
+
+  // Helper: strip dead blob URLs from persisted messages
+  const cleanMessages = useCallback((msgs) => {
+    if (!Array.isArray(msgs)) return [];
+    return msgs.map(m => {
+      if (m.audioUrl && m.audioUrl.startsWith('blob:')) {
+        const { audioUrl, duration, ...rest } = m;
+        return rest;
+      }
+      return m;
+    });
+  }, []);
 
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hasNewMessages, setHasNewMessages] = useState(false);
@@ -521,9 +503,6 @@ export default function Minigames() {
   const chatBottomRef = useRef(null);
   const userJustSentRef = useRef(false);
 
-  // ============================================================================
-  // 🔧 FIX: isMountedRef — set to true on mount (StrictMode double-mount safe)
-  // ============================================================================
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -539,14 +518,12 @@ export default function Minigames() {
     if (nearBottom) setHasNewMessages(false);
   }, []);
 
-  // ============================================================================
-  // PURE VOICE RECORDING STATE — MediaRecorder only, NO speech-to-text
-  // ============================================================================
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isMicRequesting, setIsMicRequesting] = useState(false);
   const [pendingRecording, setPendingRecording] = useState(null);
   const [micError, setMicError] = useState('');
+  const [liveTranscript, setLiveTranscript] = useState('');
 
   const recordingTimeRef = useRef(0);
   const mediaRecorderRef = useRef(null);
@@ -560,6 +537,56 @@ export default function Minigames() {
   const [myColor, setMyColor] = useState('BlueTeam');
 
   useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+
+  // ============================================================================
+  // 🔧 BULLETPROOF BOT CHAT PERSISTENCE (per topic)
+  // ============================================================================
+  
+  // LOAD: Runs once on mount AND whenever topic changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(MINI_BOT_CHAT_KEY(activeTopic));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setBotChatMessages(cleanMessages(parsed));
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load persisted bot chat:', e);
+    }
+    // Nothing saved — seed greeting ONLY if chat is empty
+    setBotChatMessages(prev => {
+      if (prev.length > 0) return prev;
+      return [{
+        id: 'm1', sender: 'Aura-1 AI', avatar: '🤖',
+        text: 'Welcome back to the Cyber Arcade. Continuing exactly where you left off!',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }];
+    });
+  }, [activeTopic, cleanMessages]);
+
+  // SAVE: Runs whenever messages or topic changes. NEVER saves empty.
+  useEffect(() => {
+    if (!botChatMessages || botChatMessages.length === 0) return;
+    try {
+      const clean = cleanMessages(botChatMessages).slice(-MAX_PERSISTED_MSGS);
+      localStorage.setItem(MINI_BOT_CHAT_KEY(activeTopic), JSON.stringify(clean));
+    } catch (e) {
+      if (e.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded, truncating');
+        try {
+          const truncated = cleanMessages(botChatMessages).slice(-30);
+          localStorage.setItem(MINI_BOT_CHAT_KEY(activeTopic), JSON.stringify(truncated));
+        } catch (e2) {
+          console.error('Failed to save even truncated:', e2);
+        }
+      } else {
+        console.warn('Failed to persist bot chat:', e);
+      }
+    }
+  }, [botChatMessages, activeTopic, cleanMessages]);
 
   const syncRosterFromDB = async () => {
     if (!user?.id) return;
@@ -694,7 +721,6 @@ export default function Minigames() {
     } else { setColorChatMessages([]); }
   }, [myTeamId, myColor, isTeamMode]);
 
-  // Solo mode: force Aura-1 AI (already correct, kept)
   useEffect(() => { if (!isTeamMode) setChatTarget('Aura-1 AI'); }, [isTeamMode]);
   useEffect(() => { setShowHint(false); }, [gameMode]);
 
@@ -702,8 +728,8 @@ export default function Minigames() {
   const sortedRoster = [...teamRoster].sort((a, b) => (b.score || 0) - (a.score || 0));
 
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ gameMode, isTeamMode, modeScores, modeProgress, squadName, chatTarget, botChatMessages })); } catch (e) {}
-  }, [gameMode, isTeamMode, modeScores, modeProgress, squadName, chatTarget, botChatMessages]);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ gameMode, isTeamMode, modeScores, modeProgress, squadName })); } catch (e) {}
+  }, [gameMode, isTeamMode, modeScores, modeProgress, squadName]);
 
   const unlockedTitle = (modeScores['God'] || 0) >= 3000 ? 'ByteForged Legend' :
                         (modeScores['Master'] || 0) >= 2600 ? 'Netrunner Elite' :
@@ -824,7 +850,7 @@ export default function Minigames() {
       const fileName = `mg_voice_${user.id}_${Date.now()}.webm`;
       const { error } = await supabase.storage.from('voice_notes').upload(fileName, blob, { contentType: 'audio/webm', upsert: false });
       if (error) throw error;
-      const { data: urlData } = supabase.storage.from('voice_notes').getPublicUrl(fileName);
+      const { data: urlData } = await supabase.storage.from('voice_notes').getPublicUrl(fileName);
       return urlData.publicUrl;
     } catch (err) { console.error('Voice upload failed:', err); return null; }
   };
@@ -835,7 +861,6 @@ export default function Minigames() {
     return `${m}:${String(sec).padStart(2, '0')}`;
   };
 
-  // Auto-stop recording on tab blur / hide (safety)
   useEffect(() => {
     const handleBlur = () => { if (isRecordingRef.current) stopRecording(); };
     const handleVisibility = () => { if (document.hidden && isRecordingRef.current) stopRecording(); };
@@ -847,7 +872,6 @@ export default function Minigames() {
     };
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -858,9 +882,6 @@ export default function Minigames() {
     };
   }, []);
 
-  // ============================================================================
-  // PURE VOICE RECORDING — granular error handling, StrictMode-safe
-  // ============================================================================
   const cleanupStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -874,6 +895,7 @@ export default function Minigames() {
         mediaRecorderRef.current.stop();
       }
     } catch (e) {}
+    stopLiveTranscript();
     cleanupStream();
     clearInterval(timerRef.current);
     timerRef.current = null;
@@ -881,18 +903,13 @@ export default function Minigames() {
   };
 
   const toggleRecording = async () => {
-    // STOP path — use ref to avoid stale state
     if (isRecordingRef.current) {
       stopRecording();
       return;
     }
-
-    // Guard: don't start while pending preview exists
     if (pendingRecording) return;
-
     setMicError('');
     setIsMicRequesting(true);
-
     if (!navigator?.mediaDevices?.getUserMedia) {
       setMicError('Microphone not supported (requires HTTPS).');
       setIsMicRequesting(false);
@@ -903,8 +920,6 @@ export default function Minigames() {
       setIsMicRequesting(false);
       return;
     }
-
-    // Step 1: Get microphone stream (with timeout)
     let stream = null;
     try {
       stream = await Promise.race([
@@ -926,8 +941,6 @@ export default function Minigames() {
       }
       return;
     }
-
-    // Step 2: Detect safe mime type
     let mimeType = '';
     const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/mpeg'];
     for (const c of candidates) {
@@ -935,8 +948,6 @@ export default function Minigames() {
         if (MediaRecorder.isTypeSupported(c)) { mimeType = c; break; }
       } catch {}
     }
-
-    // Step 3: Create MediaRecorder with MINIMAL options
     let mediaRecorder;
     try {
       const options = mimeType ? { mimeType } : {};
@@ -949,36 +960,24 @@ export default function Minigames() {
       return;
     }
     mediaRecorderRef.current = mediaRecorder;
-
-    // Step 4: Reset buffers + state
     audioChunksRef.current = [];
     recordingTimeRef.current = 0;
     setRecordingTime(0);
-
-    // Step 5: Attach handlers
     mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
     };
-
     mediaRecorder.onstop = () => {
       const duration = recordingTimeRef.current;
       const blob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
       cleanupStream();
-
       if (blob.size > 0) {
-        setPendingRecording({
-          blob,
-          blobUrl: URL.createObjectURL(blob),
-          duration,
-          target: chatTarget
-        });
+        setPendingRecording({ blob, blobUrl: URL.createObjectURL(blob), duration, target: chatTarget });
         try { sounds?.playClick?.(); } catch {}
       } else {
         setMicError('Recording came back empty — tap mic to try again.');
       }
       setIsRecording(false);
     };
-
     mediaRecorder.onerror = (err) => {
       console.error('MediaRecorder error:', err);
       cleanupStream();
@@ -987,8 +986,6 @@ export default function Minigames() {
       setIsRecording(false);
       setMicError('Recording interrupted — tap mic to retry.');
     };
-
-    // Step 6: Start recording
     try {
       mediaRecorder.start(250);
     } catch (err) {
@@ -998,12 +995,10 @@ export default function Minigames() {
       setMicError(`Could not start recorder: ${err?.message || 'format error'}`);
       return;
     }
-
-    // Step 7: All good — flip state, start timer
     setIsRecording(true);
     setIsMicRequesting(false);
+    startLiveTranscript((t) => setLiveTranscript(t));
     try { sounds?.playUnlock?.(); } catch {}
-
     timerRef.current = setInterval(() => {
       recordingTimeRef.current += 1;
       setRecordingTime(recordingTimeRef.current);
@@ -1015,17 +1010,15 @@ export default function Minigames() {
       try { URL.revokeObjectURL(pendingRecording.blobUrl); } catch (e) {}
     }
     setPendingRecording(null);
+    consumeLiveTranscript();
+    setLiveTranscript('');
     recordingTimeRef.current = 0;
     setRecordingTime(0);
   };
 
-  // ============================================================================
-  // SEND PENDING RECORDING — unified for Aura-1, Team, and Role
-  // ============================================================================
   const handleSendPendingRecording = async () => {
     if (!pendingRecording) return;
     const { blob, blobUrl, duration, target } = pendingRecording;
-    
     setPendingRecording(null);
     userJustSentRef.current = true;
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1035,17 +1028,29 @@ export default function Minigames() {
         id: Date.now().toString(), sender: currentUsername, avatar: currentUserAvatar,
         text: '🎙️ Voice Note', audioUrl: blobUrl, duration, time: timeStr
       }]);
+      const transcript = consumeLiveTranscript();
+      setLiveTranscript('');
       try {
-        const aiReply = await askAura1Bot(blob, MINIGAMES_CONTENT[activeTopic].title, 'Aura-1 AI');
-        setBotChatMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', text: aiReply, time: timeStr
-        }]);
+        if (transcript) {
+          const aiReply = await askAura1Bot(transcript, MINIGAMES_CONTENT[activeTopic].title, 'Aura-1 AI');
+          setBotChatMessages(prev => [...prev, {
+            id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', avatar: '🤖', text: aiReply, time: timeStr
+          }]);
+        } else {
+          setBotChatMessages(prev => [...prev, {
+            id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', avatar: '🤖',
+            text: `[Aura-1 Alert]: I couldn't capture live speech text from that recording. Your voice note is saved above — please type your question so I can evaluate it.`,
+            time: timeStr
+          }]);
+        }
       } catch (err) {
         setBotChatMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', text: '[Aura-1 Alert]: Connection error.', time: timeStr
+          id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', avatar: '🤖', text: '[Aura-1 Alert]: Connection error.', time: timeStr
         }]);
       }
     } else if (myTeamId) {
+      consumeLiveTranscript();
+      setLiveTranscript('');
       const audioUrl = await uploadVoiceNote(blob);
       try { URL.revokeObjectURL(blobUrl); } catch (e) {}
       if (audioUrl) {
@@ -1075,11 +1080,11 @@ export default function Minigames() {
       try {
         const aiReply = await askAura1Bot(body, MINIGAMES_CONTENT[activeTopic].title, 'Aura-1 AI');
         setBotChatMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', avatar: '🤖', text: aiReply, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
       } catch (err) {
         setBotChatMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', text: '[Aura-1 Alert]: Connection error.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          id: (Date.now() + 1).toString(), sender: 'Aura-1 AI', avatar: '🤖', text: '[Aura-1 Alert]: Connection error.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
       }
       return;
@@ -1109,7 +1114,9 @@ export default function Minigames() {
 
   const handleClearAllChat = () => {
     if (chatTarget === 'Aura-1 AI') {
-      setBotChatMessages([{ id: Date.now().toString(), sender: botName || 'Aura-1', text: 'Workspace chat cleared.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      if (window.confirm('Are you sure you want to delete all workspace messages?')) {
+        setBotChatMessages([{ id: Date.now().toString(), sender: botName || 'Aura-1', avatar: '🤖', text: 'Workspace chat cleared.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      }
     } else if (chatTarget === 'Team Chat' && myTeamId) {
       if (window.confirm('Remove YOUR team messages?')) {
         supabase.from('team_messages').delete().eq('sender_id', user.id).eq('team_id', myTeamId).eq('channel', 'team').then(() => {
@@ -1135,7 +1142,6 @@ export default function Minigames() {
     return 'amber';
   };
 
-  // Helper: what the mic button should show
   const micButtonDisabled = !!pendingRecording || isMicRequesting;
   const micButtonTitle = isRecording
     ? 'Stop Recording'
@@ -1148,14 +1154,12 @@ export default function Minigames() {
   return (
     <div className="min-h-screen text-slate-100 p-4 md:p-8 font-sans space-y-6 pb-12 relative">
       
-      {/* Amber/Orange Background Glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-amber-500/10 rounded-full blur-[150px] animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-orange-500/8 rounded-full blur-[120px]" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-yellow-400/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* TOP HUD — Frosted Glass (Mobile Optimized) */}
       <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-5 md:p-7 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl flex flex-col gap-6 relative">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
         
@@ -1175,7 +1179,6 @@ export default function Minigames() {
         </div>
 
         <div className="flex flex-col gap-3 w-full">
-          {/* Top Row Controls: Mode Toggle, Score, Streak, Team Profile */}
           <div className="flex flex-wrap items-stretch sm:items-center gap-2 sm:gap-3.5 w-full">
             <button onClick={() => setIsTeamMode(!isTeamMode)} className={`flex-1 sm:flex-none px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all border shadow-lg backdrop-blur-sm whitespace-nowrap ${isTeamMode ? 'bg-purple-500/20 border-purple-500/50 text-purple-300' : 'bg-slate-900/60 border-slate-700 text-slate-300 hover:text-white'}`}>
               <Users className="w-4 h-4 flex-shrink-0" /> {isTeamMode ? 'TEAM MODE' : 'SOLO MODE'}
@@ -1207,7 +1210,6 @@ export default function Minigames() {
             )}
           </div>
 
-          {/* Mode Selector: Full width grid on mobile */}
           <div className="flex bg-slate-900/60 border border-slate-700 rounded-xl p-1.5 shadow-md backdrop-blur-sm w-full">
             {['Beginner', 'Intermediate', 'Master', 'God', 'Go'].map(mode => {
               const locked = isModeLocked(mode);
@@ -1221,7 +1223,6 @@ export default function Minigames() {
         </div>
       </div>
 
-      {/* MAIN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2 flex flex-col">
           <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-5 md:p-9 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl space-y-6 md:space-y-7 relative">
@@ -1282,7 +1283,6 @@ export default function Minigames() {
           </div>
         </div>
 
-        {/* CHAT WORKSPACE — Frosted Glass */}
         <div className="flex flex-col">
           <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-4 sm:p-6 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl flex flex-col h-[550px] sm:h-[650px] relative">
             <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
@@ -1307,7 +1307,7 @@ export default function Minigames() {
               {displayMessages.map(msg => (
                 <div key={msg.id} className={`p-3 sm:p-4 rounded-xl max-w-[92%] text-sm space-y-2 relative group shadow-md backdrop-blur-sm ${msg.sender === currentUsername ? 'ml-auto bg-amber-500/20 border border-amber-500/40 text-amber-100 font-bold' : 'bg-slate-900/60 border border-slate-700 text-slate-200 font-bold'}`}>
                   <div className="flex justify-between items-center text-[10px] sm:text-xs text-slate-400 gap-2">
-                    <span className="font-black uppercase tracking-wide text-amber-400 truncate min-w-0">{msg.avatar} {msg.sender}</span>
+                    <span className="font-black uppercase tracking-wide text-amber-400 truncate min-w-0">{msg.avatar ? `${msg.avatar} ` : ''}{msg.sender}</span>
                     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                       <span className="font-mono whitespace-nowrap">{msg.time}</span>
                       {msg.sender === currentUsername && (
@@ -1322,7 +1322,6 @@ export default function Minigames() {
               <div ref={chatBottomRef} />
             </div>
 
-            {/* NEW MESSAGES PILL */}
             {hasNewMessages && !isNearBottom && (
               <button
                 onClick={jumpToBottom}
@@ -1334,7 +1333,6 @@ export default function Minigames() {
             )}
 
             <div className="space-y-3 pt-3 sm:pt-4 border-t border-slate-800 mt-2">
-              {/* LIVE RECORDING INDICATOR — timer only, no transcription */}
               {isRecording && (
                 <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-3 backdrop-blur-sm">
                   <div className="flex items-center justify-between text-xs font-mono text-red-300">
@@ -1344,10 +1342,12 @@ export default function Minigames() {
                     </div>
                     <span className="text-[10px] text-red-400 italic flex-shrink-0 ml-2">Tap mic again to stop</span>
                   </div>
+                  {liveTranscript && (
+                    <div className="mt-2 text-[10px] text-amber-200/90 font-mono italic truncate">📝 {liveTranscript}</div>
+                  )}
                 </div>
               )}
 
-              {/* MIC ERROR — visible feedback */}
               {micError && (
                 <div className="bg-rose-500/15 border border-rose-500/40 rounded-xl p-2.5 text-[11px] font-mono text-rose-300 flex items-center space-x-2 backdrop-blur-sm">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -1356,7 +1356,6 @@ export default function Minigames() {
                 </div>
               )}
 
-              {/* PENDING RECORDING PREVIEW */}
               {pendingRecording && (
                 <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 space-y-2 backdrop-blur-sm">
                   <div className="flex justify-between items-center text-[10px] font-mono text-amber-300 font-extrabold uppercase tracking-wider gap-2">
@@ -1410,7 +1409,6 @@ export default function Minigames() {
         </div>
       </div>
 
-      {/* COMPUTING SUITE MENU — Frosted Glass */}
       <div className="bg-slate-900/40 border border-amber-500/20 rounded-3xl p-5 md:p-6 shadow-2xl shadow-amber-500/10 backdrop-blur-2xl space-y-5 relative">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="w-full flex justify-between items-center text-sm sm:text-base font-black text-white border-b border-slate-800 pb-4 uppercase tracking-wider gap-3">
@@ -1434,12 +1432,10 @@ export default function Minigames() {
         )}
       </div>
 
-      {/* TEAM PROFILE MODAL — Frosted Glass (Mobile Fixed: Stacked Layout) */}
       {isTeamProfileOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-5 md:p-9 max-w-2xl w-full space-y-6 shadow-2xl shadow-purple-500/20 backdrop-blur-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden relative">
             
-            {/* Sticky Header */}
             <div className="flex justify-between items-center border-b border-slate-700 pb-4 sticky top-0 bg-slate-900/95 backdrop-blur-md z-10 -mx-5 px-5 md:-mx-9 md:px-9 pt-1">
               <h3 className="text-lg md:text-xl font-black text-white flex items-center gap-3 min-w-0">
                 <Users className="w-5 h-5 md:w-6 md:h-6 text-purple-400 flex-shrink-0" /> 
@@ -1464,7 +1460,6 @@ export default function Minigames() {
                       return (
                         <div key={m.id} className="flex flex-col gap-4 p-4 bg-slate-900/60 border border-slate-700 rounded-xl text-xs font-bold shadow-md backdrop-blur-sm">
                           
-                          {/* Top Row: Avatar, Name, Score */}
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                               <span className="font-mono text-slate-500 text-sm flex-shrink-0 w-4 text-center">#{idx + 1}</span>
@@ -1481,7 +1476,6 @@ export default function Minigames() {
                             <span className="text-sm font-black text-amber-400 font-mono whitespace-nowrap flex-shrink-0">{m.score || 0} PTS</span>
                           </div>
                           
-                          {/* Bottom Row: Controls (Stacked neatly below on mobile) */}
                           {isMe && (
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full pl-7">
                               <select value={m.role} onChange={(e) => handleSelectMyRole(e.target.value)} className="w-full sm:w-auto flex-1 bg-slate-950 border border-slate-700 text-white text-[11px] font-black rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500/50 backdrop-blur-sm appearance-none">
@@ -1503,7 +1497,6 @@ export default function Minigames() {
               </div>
             </div>
 
-            {/* Sticky Footer */}
             <div className="pt-4 border-t border-slate-700 flex flex-col sm:flex-row gap-3 sticky bottom-0 bg-slate-900/95 backdrop-blur-md -mx-5 px-5 md:-mx-9 md:px-9 pb-1">
               <button onClick={() => { try { sounds?.playClick?.(); } catch {} setIsTeamProfileOpen(false); if (setActiveTab) setActiveTab('friends'); }} className="flex-1 py-3 px-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-mono font-extrabold flex items-center justify-center space-x-2 transition shadow-lg shadow-purple-600/30">
                 <UserPlus className="w-4 h-4" /><span>Invite Friends</span>
@@ -1514,7 +1507,6 @@ export default function Minigames() {
         </div>
       )}
 
-      {/* SHARE MODAL — Frosted Glass */}
       {isShareModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900/80 border border-amber-500/30 rounded-3xl p-5 md:p-9 max-w-md w-full space-y-6 shadow-2xl shadow-amber-500/20 backdrop-blur-2xl max-h-[90vh] overflow-y-auto">
@@ -1535,7 +1527,6 @@ export default function Minigames() {
         </div>
       )}
 
-      {/* BOTTOM HUD — Frosted Glass */}
       <div className="bg-slate-900/40 border border-amber-500/20 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-[10px] sm:text-xs font-black text-slate-300 shadow-xl uppercase tracking-wider backdrop-blur-2xl text-center sm:text-left">
         <span className="truncate w-full sm:w-auto">Active Topic: <strong className="text-white break-words">{MINIGAMES_CONTENT[activeTopic].title}</strong></span>
         <div className="flex items-center justify-center sm:justify-end gap-4 sm:gap-6 w-full sm:w-auto flex-shrink-0">
