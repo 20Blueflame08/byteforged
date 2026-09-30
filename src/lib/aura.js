@@ -1,4 +1,4 @@
-// src/lib/aura.js (Aura-1 AI Engine — Google Gemini, text-to-text only. Zero Puter. Zero verification.)
+// src/lib/aura.js (Aura-1 AI Engine — Google Gemini native API. Zero Puter. Zero verification.)
 
 function getGeminiApiKey() {
   try {
@@ -8,34 +8,76 @@ function getGeminiApiKey() {
   }
 }
 
-// OpenAI-compatible endpoint (cleaner than the native Gemini one)
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+// Native Gemini endpoint (most stable; works with new AQ.* keys)
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-// Stable Gemini models — try fastest first, fall back to older ones
+// 2026-stable candidates, fastest first
 const GEMINI_MODEL_CANDIDATES = [
-  'gemini-2.0-flash-exp',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-latest',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-2.5-pro',
 ];
 
 let cachedModel = null;
 
-async function callGemini(messages, apiKey) {
-  const ordered = cachedModel
+/**
+ * Auto-discover a working model from the key's live model list.
+ * Prefers flash-lite → flash → pro → any gemini.
+ */
+async function discoverModel(apiKey) {
+  try {
+    const res = await fetch(`${GEMINI_BASE}?pageSize=100`, {
+      headers: { 'x-goog-api-key': apiKey },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const names = (data.models || []).map((m) => (m.name || '').replace('models/', ''));
+    return (
+      names.find((n) => n.includes('flash-lite')) ||
+      names.find((n) => n.includes('flash')) ||
+      names.find((n) => n.startsWith('gemini')) ||
+      names[0] ||
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function callGemini(systemInstruction, userText, apiKey) {
+  // Build the ordered model list: cached → candidates → (discovered if needed)
+  let ordered = cachedModel
     ? [cachedModel, ...GEMINI_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
     : [...GEMINI_MODEL_CANDIDATES];
 
   let lastStatus = null;
   let lastBody = '';
+  let discovered = false;
 
-  for (const model of ordered) {
-    const response = await fetch(GEMINI_API_URL, {
+  for (let attempt = 0; attempt < ordered.length + 1; attempt++) {
+    // If we exhausted candidates with 404s, discover a live model once
+    if (attempt >= ordered.length) {
+      if (discovered) break;
+      const found = await discoverModel(apiKey);
+      if (!found) break;
+      console.info('Aura-1 discovered live model:', found);
+      ordered = [found];
+      discovered = true;
+    }
+
+    const model = ordered[attempt];
+    const response = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        'x-goog-api-key': apiKey,
       },
-      body: JSON.stringify({ model, messages, temperature: 0.6, max_tokens: 400 }),
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        contents: [{ role: 'user', parts: [{ text: userText }] }],
+        generationConfig: { temperature: 0.6, maxOutputTokens: 400 },
+      }),
     });
 
     if (response.ok) {
@@ -47,7 +89,7 @@ async function callGemini(messages, apiKey) {
     lastStatus = response.status;
     lastBody = await response.text().catch(() => '');
 
-    // 404 = model not available → try next
+    // 404 = model retired → try next candidate (or discover)
     if (response.status === 404) continue;
     return { ok: false, status: response.status, response: null, body: lastBody };
   }
@@ -57,7 +99,6 @@ async function callGemini(messages, apiKey) {
 
 // ============================================================================
 // LIVE TRANSCRIPTION — Web Speech API (browser-native, free, zero services)
-// Captures words WHILE user records. Team/role voice notes unaffected.
 // ============================================================================
 let recognitionInstance = null;
 let liveTranscriptBuffer = '';
@@ -117,7 +158,6 @@ export async function transcribeAudio() {
 
 /**
  * Sends text (or live-captured speech) to Aura-1 via Google Gemini.
- * Your key, your monthly quota. No Puter. No sign-in popups. No verification.
  */
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
   const apiKey = getGeminiApiKey();
@@ -132,49 +172,33 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
 
   try {
     const systemInstruction = `You are ${botName}, an expert, witty, and direct CS & ICT AI evaluator for ByteForged Academy. Grade or answer the user's input accurately and concisely (under 100 words). Be encouraging but honest.`;
-
-    const messages = [
-      { role: 'system', content: systemInstruction },
-      { role: 'user', content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${userPrompt}` },
-    ];
+    const userText = `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${userPrompt}`;
 
     const result = await Promise.race([
-      callGemini(messages, apiKey),
+      callGemini(systemInstruction, userText, apiKey),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini request timed out')), 60000)),
     ]);
 
     if (!result.ok) {
       console.error('Gemini API Error:', result.status, result.body);
       const snippet = (result.body || '').slice(0, 200);
-      if (result.status === 400) {
-        return `[${botName} Alert]: Gemini rejected request (400). Raw: ${snippet}`;
-      }
-      if (result.status === 401 || result.status === 403) {
-        return `[${botName} Alert]: Gemini key rejected (${result.status}). Copy your active key from aistudio.google.com/apikey and update both .env.local and the GitHub secret.`;
-      }
-      if (result.status === 429) {
-        return `[${botName} Alert]: Gemini rate limit reached (429). Wait a moment and try again — free tier: 15 requests/min, 1,500/day.`;
-      }
-      if (result.status === 404) {
-        return `[${botName} Alert]: No valid Gemini model found (404). Update model list in aura.js.`;
-      }
+      if (result.status === 400) return `[${botName} Alert]: Gemini rejected request (400). Raw: ${snippet}`;
+      if (result.status === 401 || result.status === 403) return `[${botName} Alert]: Gemini key rejected (${result.status}). Re-copy your active key from aistudio.google.com/apikey and update .env.local + GitHub secret.`;
+      if (result.status === 429) return `[${botName} Alert]: Gemini rate limit (429). Wait a moment — free tier: 15 req/min, 1,500/day.`;
+      if (result.status === 404) return `[${botName} Alert]: No working Gemini model found even after auto-discovery (404). Raw: ${snippet}`;
       return `[${botName} Alert]: Gemini unavailable (code ${result.status}). Raw: ${snippet}`;
     }
 
     const data = await result.response.json();
-    const aiText = data?.choices?.[0]?.message?.content;
+    const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (aiText && typeof aiText === 'string') return aiText.trim();
     return `[${botName}]: Evaluation processed successfully.`;
   } catch (error) {
     console.error("Aura-1 Gemini Error:", error);
-    if (error?.message?.includes('timed out')) {
-      return `[${botName} Alert]: Gemini took too long. Please resend your message.`;
-    }
-    if (error?.message?.includes('fetch')) {
-      return `[${botName} Alert]: Browser blocked connection to Gemini (network/CORS). Check your internet.`;
-    }
-    return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet.`;
+    if (error?.message?.includes('timed out')) return `[${botName} Alert]: Gemini took too long. Please resend.`;
+    if (error?.message?.includes('fetch')) return `[${botName} Alert]: Browser blocked connection to Gemini (network/CORS).`;
+    return `[${botName} Alert]: Connection to evaluation engine interrupted. Check your internet.`;
   }
 }
 
