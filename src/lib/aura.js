@@ -1,63 +1,93 @@
-// src/lib/aura.js (Aura-1 AI Engine — X.AI Console Grok ONLY. No Puter anywhere.)
+// src/lib/aura.js (Aura-1 AI Engine — Puter Grok 4.7 + browser-native live transcript)
 
-/**
- * Safe getter for the X.AI API key — never crashes at module load.
- */
-function getXaiApiKey() {
+let puterReadyPromise = null;
+
+function loadPuterScript() {
+  if (puterReadyPromise) return puterReadyPromise;
+
+  puterReadyPromise = new Promise((resolve, reject) => {
+    if (window.puter) { resolve(window.puter); return; }
+
+    const existingScript = document.querySelector('script[src="https://js.puter.com/v2/"]');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(window.puter));
+      existingScript.addEventListener('error', () => reject(new Error('Failed to load Puter.js SDK')));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://js.puter.com/v2/';
+    script.onload = () => resolve(window.puter);
+    script.onerror = () => reject(new Error('Failed to load Puter.js SDK'));
+    document.head.appendChild(script);
+  });
+
+  return puterReadyPromise;
+}
+
+if (typeof window !== 'undefined') {
+  loadPuterScript().catch((e) => console.warn('Puter preload failed:', e));
+}
+
+export async function isPuterSignedIn() {
   try {
-    return import.meta?.env?.VITE_XAI_API_KEY || '';
-  } catch {
-    return '';
+    const puter = await loadPuterScript();
+    return await puter.auth.isSignedIn();
+  } catch (e) {
+    return false;
   }
 }
 
-const XAI_API_URL = 'https://api.x.ai/v1/chat/completions';
+export async function ensurePuterSignIn() {
+  try {
+    const puter = await loadPuterScript();
+    if (await puter.auth.isSignedIn()) return true;
+    await puter.auth.signIn();
+    return await puter.auth.isSignedIn();
+  } catch (e) {
+    return false;
+  }
+}
 
-// Self-healing model chain: retired models are skipped automatically.
-const XAI_MODEL_CANDIDATES = [
-  'grok-4-fast',
-  'grok-4',
-  'grok-3-mini',
-  'grok-3',
-];
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
 
-let cachedModel = null;
+/**
+ * Transcribes audio via Puter speech2txt (xAI provider, verification-free path)
+ */
+export async function transcribeAudio(audioFile) {
+  const puter = await loadPuterScript();
 
-async function callXai(messages, apiKey) {
-  const ordered = cachedModel
-    ? [cachedModel, ...XAI_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
-    : [...XAI_MODEL_CANDIDATES];
-
-  let lastStatus = null;
-
-  for (const model of ordered) {
-    const response = await fetch(XAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ model, messages, temperature: 0.6, max_tokens: 400 }),
-    });
-
-    if (response.ok) {
-      cachedModel = model;
-      console.info(`Aura-1 engine online via model: ${model}`);
-      return { ok: true, response };
-    }
-
-    lastStatus = response.status;
-    if (response.status === 404) continue;
-    return { ok: false, status: response.status, response };
+  try {
+    const transcript = await withTimeout(
+      puter.ai.speech2txt({ file: audioFile, provider: 'xai', language: 'en', format: true }),
+      60000,
+      'Speech-to-text'
+    );
+    if (typeof transcript === 'string') return transcript;
+    if (transcript?.text) return transcript.text;
+  } catch (e) {
+    console.warn('xAI speech2txt (object form) failed:', e);
   }
 
-  return { ok: false, status: lastStatus, response: null };
+  const transcript = await withTimeout(
+    puter.ai.speech2txt(audioFile, { provider: 'xai', language: 'en', format: true }),
+    60000,
+    'Speech-to-text'
+  );
+  if (typeof transcript === 'string') return transcript;
+  return transcript?.text || '';
 }
 
 // ============================================================================
-// LIVE TRANSCRIPTION — Web Speech API (free, browser-native, no Puter, no keys)
-// Captures words WHILE the user records. Team/role voice notes still send
-// audio blobs to Supabase as before — only Aura-1 evaluation uses the text.
+// LIVE TRANSCRIPTION — Web Speech API (browser-native, free, no Puter needed)
+// Home.jsx uses these to show live preview during recording
 // ============================================================================
 let recognitionInstance = null;
 let liveTranscriptBuffer = '';
@@ -66,10 +96,6 @@ export function isLiveTranscriptionSupported() {
   return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 }
 
-/**
- * Starts live speech capture. Call when recording starts.
- * @param {(text: string) => void} onUpdate - optional live preview callback
- */
 export function startLiveTranscript(onUpdate) {
   stopLiveTranscript();
   liveTranscriptBuffer = '';
@@ -101,9 +127,6 @@ export function startLiveTranscript(onUpdate) {
   }
 }
 
-/**
- * Stops live capture. Keeps the buffer until consumed.
- */
 export function stopLiveTranscript() {
   if (recognitionInstance) {
     try { recognitionInstance.stop(); } catch (e) {}
@@ -112,9 +135,6 @@ export function stopLiveTranscript() {
   return liveTranscriptBuffer.trim();
 }
 
-/**
- * Returns captured text and clears the buffer.
- */
 export function consumeLiveTranscript() {
   const t = liveTranscriptBuffer.trim();
   liveTranscriptBuffer = '';
@@ -122,67 +142,56 @@ export function consumeLiveTranscript() {
 }
 
 /**
- * Legacy export kept so older imports don't break the build.
- * File-blob transcription is gone — voice is captured live during recording.
- */
-export async function transcribeAudio() {
-  throw new Error('File transcription removed: use startLiveTranscript/consumeLiveTranscript during recording.');
-}
-
-/**
- * Sends text to Aura-1 via X.AI Console Grok.
- * @param {string|Blob|File} userPrompt - text expected; blobs get a graceful guide message
- * @param {string} contextPrompt - current note/quiz context
- * @param {string} botName - custom bot handle
+ * Sends text or audio to Aura-1 via Puter Grok 4.7
  */
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
-  const apiKey = getXaiApiKey();
-
-  if (!apiKey) {
-    return `[${botName} Alert]: X.AI API key not configured. Add VITE_XAI_API_KEY to .env.local (dev) and the GitHub Actions secret (deploy), then rebuild.`;
-  }
-
-  if (userPrompt instanceof Blob || userPrompt instanceof File) {
-    return `[${botName} Alert]: Voice answers are now transcribed live while you record. No speech text was captured for this note — please type your answer or re-record in Chrome/Edge.`;
-  }
-
   try {
-    const systemInstruction = `You are ${botName}, an expert, witty, and direct CS & ICT AI evaluator for ByteForged Academy. Grade or answer the user's input accurately and concisely (under 100 words). Be encouraging but honest.`;
+    const puter = await loadPuterScript();
 
-    const messages = [
-      { role: 'system', content: systemInstruction },
-      { role: 'user', content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${userPrompt}` },
-    ];
-
-    const result = await Promise.race([
-      callXai(messages, apiKey),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('X.AI request timed out')), 90000)),
-    ]);
-
-    if (!result.ok) {
-      console.error('X.AI API Error:', result.status);
-      if (result.status === 401) return `[${botName} Alert]: X.AI key rejected (401). Regenerate the key in console.x.ai and update the secret + .env.local.`;
-      if (result.status === 429) return `[${botName} Alert]: Monthly quota reached (429). Your free X.AI allocation resets next cycle.`;
-      if (result.status === 404) return `[${botName} Alert]: No valid Grok model found (404). Update the model list in aura.js from console.x.ai/docs/models.`;
-      return `[${botName} Alert]: Evaluation engine temporarily unavailable (code ${result.status}). Please try again in a moment.`;
+    if (!(await puter.auth.isSignedIn())) {
+      const signedIn = await ensurePuterSignIn();
+      if (!signedIn) {
+        return `[${botName} Alert]: Puter sign-in not completed. Please finish the sign-in window and resend.`;
+      }
     }
 
-    const data = await result.response.json();
-    const aiText = data?.choices?.[0]?.message?.content;
+    let finalInputText = userPrompt;
 
-    if (aiText && typeof aiText === 'string') return aiText.trim();
+    // If audio blob, try live transcript first, fall back to Puter transcription
+    if (userPrompt instanceof Blob || userPrompt instanceof File) {
+      const liveText = consumeLiveTranscript();
+      if (liveText) {
+        finalInputText = liveText;
+      } else {
+        try {
+          finalInputText = await transcribeAudio(userPrompt);
+        } catch (e) {
+          return `[${botName} Alert]: Voice transcription unavailable. Please type your answer instead.`;
+        }
+      }
+      if (!finalInputText || !finalInputText.trim()) {
+        return `[${botName} Alert]: I couldn't understand that audio. Please re-record or type your answer.`;
+      }
+    }
+
+    const systemInstruction = `You are ${botName}, an expert, witty, and direct CS & ICT AI evaluator for ByteForged Academy. Grade or answer the user's input accurately and concisely (under 100 words). Be encouraging but honest.`;
+    const fullPrompt = `${systemInstruction}\n\n[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}`;
+
+    const response = await withTimeout(
+      puter.ai.chat(fullPrompt, { model: "x-ai/grok-4.7", temperature: 0.6 }),
+      90000,
+      'Aura-1 evaluation'
+    );
+
+    if (typeof response === 'string') return response;
+    if (response?.message?.content) return response.message.content;
+    if (response?.text) return response.text;
+
     return `[${botName}]: Evaluation processed successfully.`;
   } catch (error) {
-    console.error("Aura-1 X.AI Error:", error);
-    if (error?.message?.includes('timed out')) {
-      return `[${botName} Alert]: The evaluation engine took too long to respond. Please resend your message.`;
-    }
-    if (error?.message?.includes('fetch')) {
-      return `[${botName} Alert]: Browser blocked the connection to api.x.ai (network/CORS). Tell Luna — we'll add a tiny proxy if needed.`;
-    }
-    return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet and try again.`;
+    console.error("Aura-1 API Error:", error);
+    return `[${botName} Alert]: Aura-1 engine connection error. Please try again.`;
   }
 }
 
-// Backward-compatible export alias
 export const askQwenBot = askAura1Bot;
