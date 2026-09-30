@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { topicContent } from '../data/topicContent';
-import { askAura1Bot } from '../lib/aura';
+import { askAura1Bot, startLiveTranscript, stopLiveTranscript, consumeLiveTranscript } from '../lib/aura';
 import { sounds } from '../lib/soundEngine';
 import { supabase } from '../lib/supabaseClient';
 import confetti from 'canvas-confetti';
 import { 
   Users, Bot, Edit3, Send, Mic, Square, ArrowRight, ArrowLeft, 
-  Share2, Menu, Sparkles, Shield,
+  Copy, Check, Sparkles, Shield,
   UserPlus, Lock, AlertTriangle,
   Trophy, RotateCcw, X, Play, Pause, Volume2, VolumeX, Lightbulb, RefreshCw, Trash2, LogOut, ArrowDown, Loader2
 } from 'lucide-react';
@@ -214,18 +214,19 @@ export default function Home() {
   const streamRef = useRef(null);
   const isRecordingRef = useRef(false);
 
+  // 🔧 NEW: live speech-to-text preview while recording (Aura-1 evaluation only)
+  const [liveTranscript, setLiveTranscript] = useState('');
+  // 🔧 NEW: copy-to-clipboard feedback state
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
   const [isBotModalOpen, setIsBotModalOpen] = useState(false);
   const [tempBotName, setTempBotName] = useState(botName || 'Aura-1');
   
-  // ============================================================================
-  // 🔧 NEW: Unified Team Profile Modal State (PracticeLab pattern)
-  // ============================================================================
   const [isTeamProfileOpen, setIsTeamProfileOpen] = useState(false);
   const [teamRoster, setTeamRoster] = useState([]);
 
   useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
 
-  // Close team profile modal when leaving team mode
   useEffect(() => {
     if (!isTeamMode) setIsTeamProfileOpen(false);
   }, [isTeamMode]);
@@ -457,6 +458,8 @@ export default function Home() {
         mediaRecorderRef.current.stop();
       }
     } catch (e) {}
+    // 🔧 Stop live transcription capture (buffer kept until consumed)
+    stopLiveTranscript();
     cleanupStream();
     clearInterval(timerRef.current);
     timerRef.current = null;
@@ -563,6 +566,8 @@ export default function Home() {
     }
     setIsRecording(true);
     setIsMicRequesting(false);
+    // 🔧 Start live speech-to-text capture alongside the recorder (free, in-browser)
+    startLiveTranscript((t) => setLiveTranscript(t));
     try { sounds?.playUnlock?.(); } catch {}
     timerRef.current = setInterval(() => {
       recordingTimeRef.current += 1;
@@ -575,6 +580,8 @@ export default function Home() {
       try { URL.revokeObjectURL(pendingRecording.blobUrl); } catch (e) {}
     }
     setPendingRecording(null);
+    consumeLiveTranscript();
+    setLiveTranscript('');
     recordingTimeRef.current = 0;
     setRecordingTime(0);
   };
@@ -595,8 +602,23 @@ export default function Home() {
         duration,
         time: timeStr
       }]);
-      await processAiSubmission(blob);
+      // 🔧 Use the live-captured transcript (no Puter, no paid STT)
+      const transcript = consumeLiveTranscript();
+      setLiveTranscript('');
+      if (transcript) {
+        await processAiSubmission(transcript);
+      } else {
+        setBotChatMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(), sender: botName || 'Aura-1', avatar: '🤖',
+          text: `[${botName || 'Aura-1'} Alert]: I couldn't capture live speech text from that recording (browser may not support it, or no speech was detected). Your voice note is saved above — please type your answer so I can evaluate it.`,
+          time: timeStr, type: 'ai'
+        }]);
+        setIsThinking(false);
+      }
     } else if (target === 'team' && myTeamId) {
+      // Team voice notes keep working exactly as before (audio blob → Supabase)
+      consumeLiveTranscript();
+      setLiveTranscript('');
       const audioUrl = await uploadVoiceNote(blob);
       try { URL.revokeObjectURL(blobUrl); } catch (e) {}
       if (audioUrl) {
@@ -676,6 +698,32 @@ export default function Home() {
     }
     try { sounds?.playClick?.(); } catch {}
     setIsFlipped(!isFlipped);
+  };
+
+  // 🔧 NEW: Copy current card content to clipboard (replaces dead Share button)
+  const handleCopyCard = async () => {
+    let text = '';
+    if (!isQuizMode) {
+      text = `${activeTopicKey.toUpperCase()} — NOTE #${noteIndex + 1}/30\n\n${isFlipped ? (currentNote.back || currentNote.backBreakdown) : (currentNote.frontSummary || currentNote.front)}`;
+      if (isFlipped && currentNote.coolFact) text += `\n\n💡 ${currentNote.coolFact}`;
+    } else {
+      text = `${activeTopicKey.toUpperCase()} — QUIZ #${quizIndex + 1}/15\n\nQ: ${currentQuiz.question}`;
+      if (answeredQuizSet.has(quizIndex)) text += `\n\n✅ Canonical Answer: ${currentQuiz.answer}`;
+      if (quizScores[quizIndex] !== undefined) text += `\n\nScore: ${quizScores[quizIndex]}/10`;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (err) {}
+      document.body.removeChild(ta);
+    }
+    try { sounds?.playClick?.(); } catch {}
+    setCopyFeedback(true);
+    setTimeout(() => setCopyFeedback(false), 1500);
   };
 
   const handlePrev = () => {
@@ -770,7 +818,6 @@ export default function Home() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-blue-500/5 rounded-full blur-[100px]" />
       </div>
 
-      {/* 🔧 HEADER BAR — z-30 added to prevent any stacking issues */}
       <div className="bg-slate-900/40 border border-cyan-500/20 rounded-3xl p-5 flex flex-wrap items-center justify-between gap-5 shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl relative z-30">
         <div className="absolute -top-px left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
         <div className="flex items-center space-x-4">
@@ -821,18 +868,18 @@ export default function Home() {
         <div className="lg:col-span-7 space-y-4">
           <div className="bg-slate-900/40 border border-cyan-500/20 rounded-3xl p-6 relative overflow-hidden shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl flex flex-col justify-between min-h-[540px]">
             <div className="space-y-3 border-b border-slate-800 pb-4">
+              {/* 🔧 Decluttered: dead Menu button removed, dead Share button replaced with Copy */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <button className="p-2.5 rounded-xl bg-slate-900/60 text-slate-200 hover:text-white border border-slate-700 backdrop-blur-sm">
-                    <Menu className="w-4 h-4" />
-                  </button>
-                  <div className="font-mono">
-                    <span className="text-xs text-cyan-300/70 font-extrabold uppercase tracking-widest block">SYSTEM ARCHITECTURE</span>
-                    <span className="text-base font-extrabold text-white">{activeTopicKey.toUpperCase()} DECK</span>
-                  </div>
+                <div className="font-mono">
+                  <span className="text-xs text-cyan-300/70 font-extrabold uppercase tracking-widest block">SYSTEM ARCHITECTURE</span>
+                  <span className="text-base font-extrabold text-white">{activeTopicKey.toUpperCase()} DECK</span>
                 </div>
-                <button className="p-2.5 rounded-xl bg-slate-900/60 text-slate-200 hover:text-white border border-slate-700 backdrop-blur-sm">
-                  <Share2 className="w-4 h-4" />
+                <button 
+                  onClick={handleCopyCard} 
+                  title={copyFeedback ? 'Copied to clipboard!' : 'Copy this card to clipboard'} 
+                  className={`p-2.5 rounded-xl border backdrop-blur-sm transition ${copyFeedback ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' : 'bg-slate-900/60 text-slate-200 hover:text-cyan-300 border-slate-700'}`}
+                >
+                  {copyFeedback ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 </button>
               </div>
 
@@ -1013,6 +1060,9 @@ export default function Home() {
                     </div>
                     <span className="text-[10px] text-red-400 italic">Tap mic again to stop</span>
                   </div>
+                  {liveTranscript && (
+                    <div className="mt-2 text-[10px] text-cyan-200/90 font-mono italic truncate">📝 {liveTranscript}</div>
+                  )}
                 </div>
               )}
 
@@ -1093,7 +1143,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🔧 NEW: UNIFIED TEAM PROFILE MODAL — PracticeLab Pattern */}
       {isTeamProfileOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-7 md:p-9 max-w-2xl w-full space-y-7 shadow-2xl shadow-purple-500/20 backdrop-blur-2xl">
