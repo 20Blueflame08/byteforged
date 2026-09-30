@@ -1,42 +1,41 @@
-// src/lib/aura.js (Aura-1 AI Engine — Groq chat + Web Speech API, self-healing model chain)
+// src/lib/aura.js (Aura-1 AI Engine — X.AI Console Grok direct API + graceful voice handling)
 
 /**
- * Safe getter for the Groq API key — never crashes at module load.
+ * Safe getter for the X.AI API key — never crashes at module load.
  */
-function getGroqApiKey() {
+function getXaiApiKey() {
   try {
-    return import.meta?.env?.VITE_GROQ_API_KEY || '';
+    return import.meta?.env?.VITE_XAI_API_KEY || '';
   } catch {
     return '';
   }
 }
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const XAI_API_URL = 'https://api.x.ai/v1/chat/completions';
 
-// 🔧 Model fallback chain: Aura-1 tries these in order and caches the winner.
-// If Groq retires a model, the next candidate takes over automatically.
-const GROQ_MODEL_CANDIDATES = [
-  'openai/gpt-oss-20b',
-  'meta-llama/llama-4-scout-17b-16e-instruct',
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
+// 🔧 Self-healing model chain: if Groq-style retirement happens here too,
+// Aura-1 walks the list and caches whichever model answers.
+const XAI_MODEL_CANDIDATES = [
+  'grok-4-fast',
+  'grok-4',
+  'grok-3-mini',
+  'grok-3',
 ];
 
 let cachedModel = null;
 
 /**
- * Calls Groq, walking the model chain on 404 (model retired).
- * @returns {Promise<{ok: boolean, status?: number, response?: Response}>}
+ * Calls the X.AI console API, walking the model chain on 404.
  */
-async function callGroq(messages, apiKey) {
+async function callXai(messages, apiKey) {
   const ordered = cachedModel
-    ? [cachedModel, ...GROQ_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
-    : [...GROQ_MODEL_CANDIDATES];
+    ? [cachedModel, ...XAI_MODEL_CANDIDATES.filter((m) => m !== cachedModel)]
+    : [...XAI_MODEL_CANDIDATES];
 
   let lastStatus = null;
 
   for (const model of ordered) {
-    const response = await fetch(GROQ_API_URL, {
+    const response = await fetch(XAI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -51,17 +50,13 @@ async function callGroq(messages, apiKey) {
     });
 
     if (response.ok) {
-      cachedModel = model; // remember the winner for next time
+      cachedModel = model;
       console.info(`Aura-1 engine online via model: ${model}`);
       return { ok: true, response };
     }
 
     lastStatus = response.status;
-
-    // 404 = model doesn't exist → try the next candidate
-    if (response.status === 404) continue;
-
-    // Any other failure (401 bad key, 429 rate limit, 5xx outage) → stop here
+    if (response.status === 404) continue; // retired/unknown model → try next
     return { ok: false, status: response.status, response };
   }
 
@@ -69,73 +64,76 @@ async function callGroq(messages, apiKey) {
 }
 
 /**
- * Transcribes audio using the browser's built-in Web Speech API.
- * No API keys, no verification, works offline.
+ * Loads Puter.js lazily — used ONLY for speech-to-text fallback, never for chat.
  */
-export async function transcribeAudio(audioFile) {
+function loadPuterScript() {
   return new Promise((resolve, reject) => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      reject(new Error('Speech recognition not supported in this browser'));
+    if (window.puter) { resolve(window.puter); return; }
+    const existingScript = document.querySelector('script[src="https://js.puter.com/v2/"]');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(window.puter));
+      existingScript.addEventListener('error', () => reject(new Error('Failed to load Puter.js SDK')));
       return;
     }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    const audioUrl = URL.createObjectURL(audioFile);
-    const audio = new Audio(audioUrl);
-    let transcript = '';
-
-    recognition.onresult = (event) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
-      }
-    };
-
-    recognition.onend = () => {
-      URL.revokeObjectURL(audioUrl);
-      if (transcript.trim()) resolve(transcript.trim());
-      else reject(new Error('No speech detected in audio'));
-    };
-
-    recognition.onerror = (event) => {
-      URL.revokeObjectURL(audioUrl);
-      reject(new Error(`Speech recognition error: ${event.error}`));
-    };
-
-    try {
-      recognition.start();
-      audio.play().catch(() => {});
-      setTimeout(() => {
-        recognition.stop();
-        if (!transcript.trim()) reject(new Error('Speech recognition timed out'));
-      }, 30000);
-    } catch (error) {
-      URL.revokeObjectURL(audioUrl);
-      reject(error);
-    }
+    const script = document.createElement('script');
+    script.src = 'https://js.puter.com/v2/';
+    script.onload = () => resolve(window.puter);
+    script.onerror = () => reject(new Error('Failed to load Puter.js SDK'));
+    document.head.appendChild(script);
   });
 }
 
 /**
- * Sends text or audio to Aura-1 via Groq API.
+ * Transcribes audio via Puter speech2txt (xAI provider).
+ * Throws on failure so the caller can degrade gracefully.
+ */
+export async function transcribeAudio(audioFile) {
+  const puter = await loadPuterScript();
+
+  try {
+    const transcript = await puter.ai.speech2txt({
+      file: audioFile,
+      provider: 'xai',
+      language: 'en',
+      format: true,
+    });
+    if (typeof transcript === 'string') return transcript;
+    if (transcript?.text) return transcript.text;
+  } catch (e) {
+    console.warn('xAI speech2txt (object form) failed, trying positional form:', e);
+  }
+
+  const transcript = await puter.ai.speech2txt(audioFile, {
+    provider: 'xai',
+    language: 'en',
+    format: true,
+  });
+  if (typeof transcript === 'string') return transcript;
+  return transcript?.text || '';
+}
+
+/**
+ * Sends text or audio to Aura-1 via X.AI Console Grok.
+ * Your key, your quota (~1,440 req/month free tier) — no Puter involved in chat.
  */
 export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aura-1") {
-  const apiKey = getGroqApiKey();
+  const apiKey = getXaiApiKey();
 
   if (!apiKey) {
-    return `[${botName} Alert]: API key not configured. Please wait for the next deployment build to complete, then refresh the page.`;
+    return `[${botName} Alert]: X.AI API key not configured. Add VITE_XAI_API_KEY to .env.local (dev) and to the GitHub Actions secret (deploy), then rebuild.`;
   }
 
   try {
     let finalInputText = userPrompt;
 
+    // Voice input → transcribe; degrade gracefully if unavailable
     if (userPrompt instanceof Blob || userPrompt instanceof File) {
-      finalInputText = await transcribeAudio(userPrompt);
+      try {
+        finalInputText = await transcribeAudio(userPrompt);
+      } catch (e) {
+        console.warn('Voice transcription unavailable:', e);
+        return `[${botName} Alert]: Voice transcription is unavailable right now. Please type your answer instead — text evaluation works perfectly.`;
+      }
       if (!finalInputText || !finalInputText.trim()) {
         return `[${botName} Alert]: I couldn't understand that audio. Please re-record or type your answer.`;
       }
@@ -148,19 +146,13 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
       { role: 'user', content: `[STUDY CONTEXT]: ${contextPrompt}\n\n[USER INPUT]: ${finalInputText}` },
     ];
 
-    const result = await callGroq(messages, apiKey);
+    const result = await callXai(messages, apiKey);
 
     if (!result.ok) {
-      console.error('Groq API Error:', result.status);
-      if (result.status === 401) {
-        return `[${botName} Alert]: API key rejected (401). The key may be invalid or revoked — regenerate it in the Groq console and update the GitHub secret.`;
-      }
-      if (result.status === 429) {
-        return `[${botName} Alert]: Rate limit reached (429). Give it a minute and resend — the free tier refreshes quickly.`;
-      }
-      if (result.status === 404) {
-        return `[${botName} Alert]: No available AI model found (404). All candidate models are retired — update the model list in aura.js.`;
-      }
+      console.error('X.AI API Error:', result.status);
+      if (result.status === 401) return `[${botName} Alert]: X.AI key rejected (401). Regenerate the key in console.x.ai and update the secret + .env.local.`;
+      if (result.status === 429) return `[${botName} Alert]: Monthly quota reached (429). Your free X.AI tier resets next cycle — text me later or upgrade in console.x.ai.`;
+      if (result.status === 404) return `[${botName} Alert]: No valid Grok model found (404). Update the model list in aura.js from console.x.ai/docs/models.`;
       return `[${botName} Alert]: Evaluation engine temporarily unavailable (code ${result.status}). Please try again in a moment.`;
     }
 
@@ -170,9 +162,14 @@ export async function askAura1Bot(userPrompt, contextPrompt = "", botName = "Aur
     if (aiText && typeof aiText === 'string') return aiText.trim();
     return `[${botName}]: Evaluation processed successfully.`;
   } catch (error) {
-    console.error("Aura-1 Groq Error:", error);
+    console.error("Aura-1 X.AI Error:", error);
+    // "Failed to fetch" usually means network or CORS blocking the browser call
+    if (error?.message?.includes('fetch')) {
+      return `[${botName} Alert]: Browser blocked the connection to api.x.ai (network/CORS). Tell Luna — we'll add a tiny proxy if X.AI restricts browser calls.`;
+    }
     return `[${botName} Alert]: Connection to evaluation engine interrupted. Please check your internet and try again.`;
   }
 }
 
+// Backward-compatible export alias
 export const askQwenBot = askAura1Bot;
